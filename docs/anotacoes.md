@@ -1,0 +1,16 @@
+
+
+sobrinke.dos@gmail.com
+
+Project name: sobrinke.dos@gmail.com's Project
+
+Database Password: EkolAZh7jVFMlJUF
+
+token: 
+grocery: sbp_bfc796145375ee8073aa8325ac6c56e8e781b7b4
+
+URL: https://eajhacfvnifqfovifjyw.supabase.co
+
+anon public: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhamhhY2Z2bmlmcWZvdmlmanl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2OTc1MTAsImV4cCI6MjA2MjI3MzUxMH0.Ig6ZQo6G-UTSPHpSqUxDIcBY_hD9TpuR8uVZVZgkOAY
+
+service_rolesecret: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhamhhY2Z2bmlmcWZvdmlmanl3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjY5NzUxMCwiZXhwIjoyMDYyMjczNTEwfQ.784q0Uim6bdUrHnYW4qGjy7FlswUwNWrwT2EJIqPRUU
