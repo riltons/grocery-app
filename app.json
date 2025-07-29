@@ -7,6 +7,12 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "jsEngine": "hermes",
+    "main": "expo-router/entry",
+    "statusBar": {
+      "style": "dark",
+      "backgroundColor": "#ffffff"
+    },
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -15,22 +21,64 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "extra": {
+      "supabaseUrl": "https://eajhacfvnifqfovifjyw.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhamhhY2Z2bmlmcWZvdmlmanl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2OTc1MTAsImV4cCI6MjA2MjI3MzUxMH0.Ig6ZQo6G-UTSPHpSqUxDIcBY_hD9TpuR8uVZVZgkOAY",
+      "appEnv": "development",
+      "apiUrl": "https://eajhacfvnifqfovifjyw.supabase.co",
+      "debug": true,
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.riltongarcia.groceryapp",
+      "buildNumber": "1.0.0",
+      "statusBar": {
+        "style": "dark"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.riltongarcia.groceryapp",
+      "versionCode": 1,
+      "permissions": [],
+      "softwareKeyboardLayoutMode": "pan",
+      "statusBar": {
+        "backgroundColor": "#ffffff",
+        "barStyle": "dark-content"
+      }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "scheme": "grocery",
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "node_modules/@expo-google-fonts/inter/Inter_400Regular.ttf",
+            "node_modules/@expo-google-fonts/merriweather/Merriweather_400Regular.ttf",
+            "node_modules/@expo-google-fonts/fira-code/FiraCode_400Regular.ttf"
+          ]
+        }
+      ]
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/your-project-id"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    }
   }
 }

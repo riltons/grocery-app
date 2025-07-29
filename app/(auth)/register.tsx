@@ -2,44 +2,69 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityInd
 import { Link, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
+import SafeContainer from '../../components/SafeContainer';
 
-export default function LoginScreen() {
+export default function Register() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+  const { signUp } = useAuth();
   const router = useRouter();
 
-  const handleLogin = async () => {
-    if (!email || !password) {
+  const handleRegister = async () => {
+    // Validação dos campos
+    if (!name || !email || !password || !confirmPassword) {
       Alert.alert('Erro', 'Por favor, preencha todos os campos');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert('Erro', 'As senhas não coincidem');
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert('Erro', 'A senha deve ter pelo menos 6 caracteres');
       return;
     }
 
     try {
       setLoading(true);
-      const { error } = await signIn(email, password);
+      const { error } = await signUp(email, password);
       
       if (error) {
-        Alert.alert('Erro ao entrar', error.message || 'Verifique suas credenciais e tente novamente');
+        Alert.alert('Erro ao criar conta', error.message || 'Verifique os dados e tente novamente');
       } else {
-        // O redirecionamento é tratado pelo RootLayoutNav
-        // router.replace('/');
+        Alert.alert(
+          'Conta criada com sucesso', 
+          'Verifique seu email para confirmar o cadastro e faça login.',
+          [{ text: 'OK', onPress: () => router.replace('/login') }]
+        );
       }
     } catch (error: any) {
-      Alert.alert('Erro', error.message || 'Ocorreu um erro ao tentar fazer login');
+      Alert.alert('Erro', error.message || 'Ocorreu um erro ao criar a conta');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
-      <Text style={styles.title}>Entrar</Text>
+    <SafeContainer style={styles.container}>
+      <StatusBar style="dark" />
+      <Text style={styles.title}>Criar Conta</Text>
       
       <View style={styles.form}>
+        <TextInput
+          style={styles.input}
+          placeholder="Nome completo"
+          value={name}
+          onChangeText={setName}
+          editable={!loading}
+        />
+        
         <TextInput
           style={styles.input}
           placeholder="Email"
@@ -59,38 +84,51 @@ export default function LoginScreen() {
           editable={!loading}
         />
         
+        <TextInput
+          style={styles.input}
+          placeholder="Confirmar senha"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+          editable={!loading}
+        />
+        
         <TouchableOpacity 
           style={[styles.button, loading && styles.buttonDisabled]} 
-          onPress={handleLogin}
+          onPress={handleRegister}
           disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>Entrar</Text>
+            <Text style={styles.buttonText}>Criar conta</Text>
           )}
         </TouchableOpacity>
         
         <View style={styles.links}>
-          <Link href="/register" style={styles.link} disabled={loading}>
-            <Text style={styles.linkText}>Não tenho uma conta</Text>
+          <Link href="/login" style={styles.link} disabled={loading}>
+            <Text style={styles.linkText}>Já tenho uma conta</Text>
           </Link>
         </View>
       </View>
-    </View>
+    </SafeContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  buttonDisabled: {
+    backgroundColor: '#a5d6a7',
+    opacity: 0.7,
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',
     padding: 20,
-    justifyContent: 'center',
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
+    marginTop: 20,
     marginBottom: 30,
     textAlign: 'center',
   },
@@ -110,10 +148,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 10,
-  },
-  buttonDisabled: {
-    backgroundColor: '#a5d6a7',
-    opacity: 0.7,
   },
   buttonText: {
     color: 'white',

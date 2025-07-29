@@ -1,25 +1,37 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { ListService } from '../../lib/lists';
+import { ListsService } from '../../lib/lists';
+import { ProductService } from '../../lib/products';
+import AddProductInterface from '../../components/AddProductInterface';
+import PriceInputModal from '../../components/PriceInputModal';
+import SafeContainer from '../../components/SafeContainer';
+import { supabase } from '../../lib/supabase';
+import type { SpecificProduct } from '../../lib/supabase';
 
 // Tipos para a lista e seus itens
 type List = {
   id: string;
   name: string;
-  description: string;
   created_at: string;
+  updated_at: string;
+  user_id: string;
 };
 
 type ListItem = {
   id: string;
   list_id: string;
   product_name: string;
+  product_brand?: string;
+  product_id?: string;
+  generic_product_name?: string;
+  category?: string;
   quantity: number;
   unit: string;
   checked: boolean;
+  price?: number;
   created_at: string;
 };
 
@@ -27,12 +39,16 @@ export default function ListDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [list, setList] = useState<List | null>(null);
   const [items, setItems] = useState<ListItem[]>([]);
+  const [pendingItems, setPendingItems] = useState<ListItem[]>([]);
+  const [completedItems, setCompletedItems] = useState<ListItem[]>([]);
+  const [totalValue, setTotalValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemQuantity, setNewItemQuantity] = useState('1');
-  const [newItemUnit, setNewItemUnit] = useState('un');
   const [addingItem, setAddingItem] = useState(false);
+  const [suggestions, setSuggestions] = useState<SpecificProduct[]>([]);
+  const [frequentProducts, setFrequentProducts] = useState<SpecificProduct[]>([]);
+  const [priceModalVisible, setPriceModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ListItem | null>(null);
   const router = useRouter();
 
   // Função para buscar detalhes da lista
@@ -42,7 +58,7 @@ export default function ListDetail() {
     try {
       setLoading(true);
       // Busca detalhes da lista
-      const { data: listData, error: listError } = await ListService.getListById(id);
+      const { data: listData, error: listError } = await ListsService.getListById(id);
       
       if (listError) {
         Alert.alert('Erro', 'Não foi possível carregar os detalhes da lista');
@@ -54,7 +70,7 @@ export default function ListDetail() {
       }
       
       // Busca itens da lista
-      const { data: itemsData, error: itemsError } = await ListService.getListItems(id);
+      const { data: itemsData, error: itemsError } = await ListsService.getListItems(id);
       
       if (itemsError) {
         Alert.alert('Erro', 'Não foi possível carregar os itens da lista');
@@ -70,10 +86,58 @@ export default function ListDetail() {
     }
   };
 
+  // Organizar itens por status e calcular total
+  const organizeItems = (allItems: ListItem[]) => {
+    const pending = allItems.filter(item => !item.checked);
+    const completed = allItems.filter(item => item.checked);
+    
+    setPendingItems(pending);
+    setCompletedItems(completed);
+    
+    // Calcular total dos itens comprados
+    const total = completed.reduce((sum, item) => {
+      const itemTotal = (item.price || 0) * item.quantity;
+      return sum + itemTotal;
+    }, 0);
+    
+    setTotalValue(total);
+  };
+
   // Carregar detalhes quando o componente montar
   useEffect(() => {
     fetchListDetails();
+    loadSuggestions();
+    loadFrequentProducts();
   }, [id]);
+
+  // Reorganizar itens quando a lista mudar
+  useEffect(() => {
+    organizeItems(items);
+  }, [items]);
+
+  // Carregar sugestões de produtos
+  const loadSuggestions = async () => {
+    try {
+      const { data } = await ProductService.getSpecificProducts();
+      if (data) {
+        setSuggestions(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar sugestões:', error);
+    }
+  };
+
+  // Carregar produtos mais usados
+  const loadFrequentProducts = async () => {
+    try {
+      const { data } = await ProductService.getMostUsedProducts(5);
+      if (data) {
+        setFrequentProducts(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar produtos frequentes:', error);
+    }
+  };
 
   // Função para atualizar a lista (pull-to-refresh)
   const handleRefresh = () => {
@@ -81,35 +145,223 @@ export default function ListDetail() {
     fetchListDetails();
   };
 
-  // Função para adicionar um novo item à lista
-  const handleAddItem = async () => {
-    if (!newItemName.trim()) {
-      Alert.alert('Erro', 'Por favor, informe o nome do produto');
-      return;
-    }
+  // Função para verificar se produto já existe na lista
+  const checkDuplicateProduct = (productName: string, productId?: string): boolean => {
+    return items.some(item => {
+      // Se tem product_id, compara por ID
+      if (productId && item.product_id) {
+        return item.product_id === productId;
+      }
+      // Senão, compara por nome (case insensitive)
+      return item.product_name.toLowerCase() === productName.toLowerCase();
+    });
+  };
 
+  // Função para aumentar quantidade de produto existente
+  const increaseProductQuantity = async (productName: string, additionalQuantity: number) => {
     try {
       setAddingItem(true);
-      const { data, error } = await ListService.addListItem(id, {
-        product_name: newItemName.trim(),
-        quantity: parseFloat(newItemQuantity) || 1,
-        unit: newItemUnit.trim() || 'un',
+      
+      // Encontrar o item existente
+      const existingItem = items.find(item => 
+        item.product_name.toLowerCase() === productName.toLowerCase()
+      );
+      
+      if (!existingItem) return;
+      
+      const newQuantity = existingItem.quantity + additionalQuantity;
+      
+      // Atualizar no banco
+      const { error } = await ListsService.updateListItem(id, existingItem.id, {
+        ...existingItem,
+        quantity: newQuantity
+      });
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar a quantidade');
+        return;
+      }
+      
+      // Atualizar localmente
+      setItems(prevItems =>
+        prevItems.map(item =>
+          item.id === existingItem.id
+            ? { ...item, quantity: newQuantity }
+            : item
+        )
+      );
+      
+    } catch (error) {
+      console.error('Erro ao aumentar quantidade:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao atualizar a quantidade');
+    } finally {
+      setAddingItem(false);
+    }
+  };
+
+  // Função para adicionar um novo item à lista (produto manual)
+  const handleAddProduct = async (productName: string, quantity: number, unit: string) => {
+    try {
+      // Verificar se produto já existe
+      if (checkDuplicateProduct(productName)) {
+        Alert.alert(
+          'Produto já existe',
+          `"${productName}" já está na sua lista. Deseja aumentar a quantidade?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Aumentar Quantidade', 
+              onPress: () => increaseProductQuantity(productName, quantity)
+            }
+          ]
+        );
+        return;
+      }
+
+      setAddingItem(true);
+      const { data, error } = await ListsService.addListItem(id, {
+        product_name: productName,
+        quantity: quantity,
+        unit: unit,
         checked: false,
       });
 
       if (error) {
         Alert.alert('Erro', 'Não foi possível adicionar o item à lista');
+        throw error;
       } else if (data) {
         // Adiciona o novo item à lista local
         setItems(prevItems => [...prevItems, data]);
-        // Limpa o campo de novo item
-        setNewItemName('');
-        setNewItemQuantity('1');
-        setNewItemUnit('un');
+        // Recarrega produtos frequentes
+        loadFrequentProducts();
       }
     } catch (error) {
       console.error('Erro ao adicionar item:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao adicionar o item');
+      throw error;
+    } finally {
+      setAddingItem(false);
+    }
+  };
+
+  // Função para selecionar um produto existente
+  const handleSelectProduct = async (product: SpecificProduct, quantity: number, unit: string) => {
+    try {
+      // Verificar se produto já existe
+      if (checkDuplicateProduct(product.name, product.id)) {
+        Alert.alert(
+          'Produto já existe',
+          `"${product.name}" já está na sua lista. Deseja aumentar a quantidade?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Aumentar Quantidade', 
+              onPress: () => increaseProductQuantity(product.name, quantity)
+            }
+          ]
+        );
+        return;
+      }
+
+      setAddingItem(true);
+      const { data, error } = await ListsService.addListItem(id, {
+        product_name: product.name,
+        quantity: quantity,
+        unit: unit,
+        checked: false,
+        product_id: product.id, // Passa o ID do produto
+      });
+
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível adicionar o produto à lista');
+        throw error;
+      } else if (data) {
+        // Adiciona o novo item à lista local
+        setItems(prevItems => [...prevItems, data]);
+        // Recarrega produtos frequentes
+        loadFrequentProducts();
+      }
+    } catch (error) {
+      console.error('Erro ao adicionar produto:', error);
+      throw error;
+    } finally {
+      setAddingItem(false);
+    }
+  };
+
+  // Função para criar um novo produto e adicioná-lo à lista
+  const handleCreateNewProduct = async (productName: string, quantity: number, unit: string) => {
+    try {
+      // Verificar se produto já existe
+      if (checkDuplicateProduct(productName)) {
+        Alert.alert(
+          'Produto já existe',
+          `"${productName}" já está na sua lista. Deseja aumentar a quantidade?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Aumentar Quantidade', 
+              onPress: () => increaseProductQuantity(productName, quantity)
+            }
+          ]
+        );
+        return;
+      }
+
+      setAddingItem(true);
+      
+      // Primeiro, criar o produto genérico
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) {
+        Alert.alert('Erro', 'Usuário não autenticado');
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
+        name: productName,
+        category: null,
+        user_id: user.user.id,
+      });
+
+      if (genericError || !genericProduct) {
+        Alert.alert('Erro', 'Não foi possível criar o produto genérico');
+        throw genericError;
+      }
+
+      // Depois, criar o produto específico
+      const { data: specificProduct, error: specificError } = await ProductService.createSpecificProduct({
+        generic_product_id: genericProduct.id,
+        name: productName,
+        brand: '',
+        user_id: user.user.id,
+      });
+
+      if (specificError || !specificProduct) {
+        Alert.alert('Erro', 'Não foi possível criar o produto específico');
+        throw specificError;
+      }
+
+      // Finalmente, adicionar à lista
+      const { data, error } = await ListsService.addListItem(id, {
+        product_name: productName,
+        quantity: quantity,
+        unit: unit,
+        checked: false,
+        product_id: specificProduct.id, // Passa o ID do produto criado
+      });
+
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível adicionar o produto à lista');
+        throw error;
+      } else if (data) {
+        // Adiciona o novo item à lista local
+        setItems(prevItems => [...prevItems, data]);
+        // Atualiza sugestões e produtos frequentes
+        loadSuggestions();
+        loadFrequentProducts();
+      }
+    } catch (error) {
+      console.error('Erro ao criar e adicionar produto:', error);
+      throw error;
     } finally {
       setAddingItem(false);
     }
@@ -118,8 +370,16 @@ export default function ListDetail() {
   // Função para marcar/desmarcar um item
   const handleToggleItem = async (item: ListItem) => {
     try {
-      const updatedItem = { ...item, checked: !item.checked };
-      const { error } = await ListService.updateListItem(id, item.id, updatedItem);
+      // Se está marcando como comprado e não tem preço, mostrar modal
+      if (!item.checked) {
+        setSelectedItem(item);
+        setPriceModalVisible(true);
+        return;
+      }
+
+      // Se está desmarcando, apenas atualizar
+      const updatedItem = { ...item, checked: false, price: undefined };
+      const { error } = await ListsService.updateListItem(id, item.id, updatedItem);
       
       if (error) {
         Alert.alert('Erro', 'Não foi possível atualizar o item');
@@ -135,10 +395,38 @@ export default function ListDetail() {
     }
   };
 
+  // Função para confirmar item comprado com preço
+  const handleConfirmPurchase = async (price: number) => {
+    if (!selectedItem) return;
+
+    try {
+      const updatedItem = { 
+        ...selectedItem, 
+        checked: true, 
+        price: price > 0 ? price : undefined 
+      };
+      
+      const { error } = await ListsService.updateListItem(id, selectedItem.id, updatedItem);
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar o item');
+        throw error;
+      } else {
+        // Atualiza o item na lista local
+        setItems(prevItems =>
+          prevItems.map(i => (i.id === selectedItem.id ? updatedItem : i))
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao confirmar compra:', error);
+      throw error;
+    }
+  };
+
   // Função para remover um item da lista
   const handleRemoveItem = async (itemId: string) => {
     try {
-      const { error } = await ListService.removeListItem(id, itemId);
+      const { error } = await ListsService.removeListItem(id, itemId);
       
       if (error) {
         Alert.alert('Erro', 'Não foi possível remover o item');
@@ -154,7 +442,7 @@ export default function ListDetail() {
 
   // Renderizar cada item da lista
   const renderItem = ({ item }: { item: ListItem }) => (
-    <View style={styles.itemContainer}>
+    <View style={[styles.itemContainer, item.checked && styles.itemChecked]}>
       <TouchableOpacity 
         style={styles.checkBox} 
         onPress={() => handleToggleItem(item)}
@@ -168,21 +456,51 @@ export default function ListDetail() {
       
       <View style={styles.itemInfo}>
         <Text 
-          style={[styles.itemName, item.checked && styles.itemChecked]}
+          style={[styles.itemName, item.checked && styles.itemNameChecked]}
         >
           {item.product_name}
         </Text>
-        <Text style={styles.itemQuantity}>
-          {item.quantity} {item.unit}
-        </Text>
+        {item.product_brand && (
+          <Text style={[styles.itemBrand, item.checked && styles.itemBrandChecked]}>
+            {item.product_brand}
+          </Text>
+        )}
+        <View style={styles.itemDetails}>
+          <Text style={[styles.itemQuantity, item.checked && styles.itemQuantityChecked]}>
+            {item.quantity} {item.unit}
+          </Text>
+          {item.category && (
+            <Text style={[styles.itemCategory, item.checked && styles.itemCategoryChecked]}>
+              • {item.category}
+            </Text>
+          )}
+          {item.price && item.checked && (
+            <Text style={styles.itemPrice}>
+              • {(item.price * item.quantity).toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+              })}
+            </Text>
+          )}
+        </View>
       </View>
       
-      <TouchableOpacity 
-        style={styles.deleteButton}
-        onPress={() => handleRemoveItem(item.id)}
-      >
-        <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
-      </TouchableOpacity>
+      <View style={styles.itemActions}>
+        {item.product_id && (
+          <TouchableOpacity 
+            style={styles.productButton}
+            onPress={() => router.push(`/product/${item.product_id}`)}
+          >
+            <Ionicons name="information-circle-outline" size={20} color="#4CAF50" />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity 
+          style={styles.deleteButton}
+          onPress={() => handleRemoveItem(item.id)}
+        >
+          <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -196,8 +514,8 @@ export default function ListDetail() {
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
+    <SafeContainer style={styles.container}>
+      <StatusBar style="dark" />
       <View style={styles.header}>
         <TouchableOpacity 
           onPress={() => router.back()} 
@@ -211,50 +529,29 @@ export default function ListDetail() {
         <View style={{ width: 24 }} />
       </View>
 
-      {list?.description ? (
-        <Text style={styles.description}>{list.description}</Text>
-      ) : null}
 
-      <View style={styles.addItemContainer}>
-        <TextInput
-          style={styles.addItemInput}
-          placeholder="Adicionar item..."
-          value={newItemName}
-          onChangeText={setNewItemName}
-          editable={!addingItem}
-        />
-        
-        <View style={styles.quantityContainer}>
-          <TextInput
-            style={styles.quantityInput}
-            placeholder="Qtd"
-            value={newItemQuantity}
-            onChangeText={setNewItemQuantity}
-            keyboardType="numeric"
-            editable={!addingItem}
-          />
-          
-          <TextInput
-            style={styles.unitInput}
-            placeholder="Un"
-            value={newItemUnit}
-            onChangeText={setNewItemUnit}
-            editable={!addingItem}
-          />
-        </View>
-        
-        <TouchableOpacity 
-          style={[styles.addButton, addingItem && styles.buttonDisabled]} 
-          onPress={handleAddItem}
-          disabled={addingItem}
-        >
-          {addingItem ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="add" size={24} color="#fff" />
-          )}
-        </TouchableOpacity>
-      </View>
+
+      <AddProductInterface
+        onAddProduct={handleAddProduct}
+        onSelectProduct={handleSelectProduct}
+        onCreateNewProduct={handleCreateNewProduct}
+        suggestions={suggestions}
+        frequentProducts={frequentProducts}
+        loading={addingItem}
+      />
+
+      <PriceInputModal
+        visible={priceModalVisible}
+        onClose={() => {
+          setPriceModalVisible(false);
+          setSelectedItem(null);
+        }}
+        onConfirm={handleConfirmPurchase}
+        productName={selectedItem?.product_name || ''}
+        quantity={selectedItem?.quantity || 0}
+        unit={selectedItem?.unit || ''}
+        loading={addingItem}
+      />
 
       {items.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -264,16 +561,59 @@ export default function ListDetail() {
         </View>
       ) : (
         <FlatList
-          data={items}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
+          data={[]}
+          renderItem={() => null}
+          keyExtractor={() => ''}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
+          ListHeaderComponent={
+            <View>
+              {/* Itens Pendentes */}
+              {pendingItems.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>
+                    A Comprar ({pendingItems.length})
+                  </Text>
+                  {pendingItems.map(item => (
+                    <View key={item.id}>
+                      {renderItem({ item })}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Itens Comprados */}
+              {completedItems.length > 0 && (
+                <View style={styles.section}>
+                  <View style={styles.completedHeader}>
+                    <Text style={styles.sectionTitle}>
+                      Comprados ({completedItems.length})
+                    </Text>
+                    {totalValue > 0 && (
+                      <Text style={styles.totalValue}>
+                        Total: {totalValue.toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL'
+                        })}
+                      </Text>
+                    )}
+                  </View>
+                  {completedItems.map(item => (
+                    <View key={item.id}>
+                      {renderItem({ item })}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          }
         />
       )}
-    </View>
+
+
+    </SafeContainer>
   );
 }
 
@@ -281,14 +621,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    padding: 16,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 16,
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   backButton: {
     padding: 8,
@@ -299,60 +641,33 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
-  description: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  addItemContainer: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  addItemInput: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 16,
-  },
-  quantityContainer: {
-    flexDirection: 'row',
-    marginLeft: 8,
-  },
-  quantityInput: {
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    width: 50,
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  unitInput: {
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    width: 50,
-    fontSize: 16,
-    textAlign: 'center',
-    marginLeft: 8,
-  },
-  addButton: {
-    backgroundColor: '#4CAF50',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  buttonDisabled: {
-    backgroundColor: '#a5d6a7',
-    opacity: 0.7,
-  },
+
+
   listContainer: {
     paddingBottom: 20,
+    paddingHorizontal: 16,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  completedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  totalValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4CAF50',
   },
   itemContainer: {
     flexDirection: 'row',
@@ -361,6 +676,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
+  },
+  itemChecked: {
+    backgroundColor: '#f0f8f1',
+    opacity: 0.8,
   },
   checkBox: {
     marginRight: 12,
@@ -371,15 +690,60 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 16,
     fontWeight: '500',
+    marginBottom: 2,
+    color: '#333',
+  },
+  itemNameChecked: {
+    textDecorationLine: 'line-through',
+    color: '#888',
+  },
+  itemBrand: {
+    fontSize: 14,
+    color: '#888',
     marginBottom: 4,
+  },
+  itemBrandChecked: {
+    textDecorationLine: 'line-through',
+    color: '#aaa',
   },
   itemChecked: {
     textDecorationLine: 'line-through',
     color: '#888',
   },
+  itemDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   itemQuantity: {
     fontSize: 14,
     color: '#666',
+  },
+  itemQuantityChecked: {
+    textDecorationLine: 'line-through',
+    color: '#aaa',
+  },
+  itemCategory: {
+    fontSize: 12,
+    color: '#999',
+    marginLeft: 8,
+  },
+  itemCategoryChecked: {
+    textDecorationLine: 'line-through',
+    color: '#bbb',
+  },
+  itemPrice: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  itemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  productButton: {
+    padding: 8,
+    marginRight: 4,
   },
   deleteButton: {
     padding: 8,

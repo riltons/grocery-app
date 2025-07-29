@@ -1,10 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
+import Constants from 'expo-constants';
 
 // URL do projeto Supabase e chave anônima
-const supabaseUrl = 'URL: https://eajhacfvnifqfovifjyw.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhamhhY2Z2bmlmcWZvdmlmanl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2OTc1MTAsImV4cCI6MjA2MjI3MzUxMH0.Ig6ZQo6G-UTSPHpSqUxDIcBY_hD9TpuR8uVZVZgkOAY';
+const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.SUPABASE_URL || 'https://eajhacfvnifqfovifjyw.supabase.co';
+const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhamhhY2Z2bmlmcWZvdmlmanl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2OTc1MTAsImV4cCI6MjA2MjI3MzUxMH0.Ig6ZQo6G-UTSPHpSqUxDIcBY_hD9TpuR8uVZVZgkOAY';
+
+// Validação das credenciais
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Erro: As variáveis de ambiente do Supabase não estão configuradas corretamente.');
+}
 
 // Cria o cliente Supabase com configuração para React Native
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -26,7 +32,7 @@ export type User = {
 export type GenericProduct = {
   id: string;
   name: string;
-  category_id: string | null | undefined;
+  category: string | null | undefined;
   created_at: string;
   user_id: string;
 };
@@ -38,7 +44,6 @@ export type SpecificProduct = {
   brand: string;
   description?: string; // Adicionada propriedade description
   image_url?: string;
-  category_id?: string;
   created_at: string;
   user_id: string;
 };
@@ -46,7 +51,6 @@ export type SpecificProduct = {
 export type List = {
   id: string;
   name: string;
-  description?: string;
   created_at: string;
   updated_at: string;
   user_id: string;

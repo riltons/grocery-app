@@ -7,6 +7,7 @@ import { ProductService } from '../../lib/products';
 import { StoreService } from '../../lib/stores';
 import CategorySelector from '../../components/CategorySelector';
 import PriceHistoryModal from '../../components/PriceHistoryModal';
+import SafeContainer from '../../components/SafeContainer';
 import { Animated } from 'react-native';
 
 // Tipos para o produto e preços
@@ -14,9 +15,12 @@ type Product = {
   id: string;
   name: string;
   description?: string;
-  category_id?: string | null; // Modificado para aceitar null
   image_url?: string;
   created_at: string;
+  generic_products?: {
+    name: string;
+    category: string | null;
+  };
 };
 
 type Store = {
@@ -69,7 +73,7 @@ export default function ProductDetail() {
         
         if (data) {
           setProduct(data);
-          setSelectedCategory(data.category_id || null);
+          setSelectedCategory(data.generic_products?.category || null);
           
           // Animar a entrada dos dados
           Animated.timing(fadeAnim, {
@@ -131,8 +135,14 @@ export default function ProductDetail() {
     try {
       setSaving(true);
       
-      const { error } = await ProductService.updateSpecificProduct(id, {
-        category_id: selectedCategory === null ? undefined : selectedCategory
+      // Atualizar a categoria no produto genérico
+      if (!product?.generic_products) {
+        Alert.alert('Erro', 'Produto genérico não encontrado');
+        return;
+      }
+
+      const { error } = await ProductService.updateGenericProduct(product.generic_product_id, {
+        category: selectedCategory
       });
       
       if (error) {
@@ -140,7 +150,13 @@ export default function ProductDetail() {
       } else {
         Alert.alert('Sucesso', 'Categoria atualizada com sucesso!');
         // Atualizar o produto local
-        setProduct(prev => prev ? { ...prev, category_id: selectedCategory === null ? undefined : selectedCategory } : null);
+        setProduct(prev => prev ? { 
+          ...prev, 
+          generic_products: prev.generic_products ? {
+            ...prev.generic_products,
+            category: selectedCategory
+          } : undefined
+        } : null);
       }
     } catch (error) {
       console.error('Erro ao atualizar categoria:', error);
@@ -165,13 +181,8 @@ export default function ProductDetail() {
       
       // Atualizar o histórico de preços local
       if (data) {
-        const store = stores.find(s => s.id === storeId);
-        const newPriceRecord = {
-          ...data,
-          store: store
-        };
-        
-        setPriceHistory(prev => [newPriceRecord, ...prev]);
+        // Os dados já vêm com a informação da loja incluída e processada
+        setPriceHistory(prev => [data, ...prev]);
       }
     } catch (error) {
       console.error('Erro ao salvar preço:', error);
@@ -228,8 +239,8 @@ export default function ProductDetail() {
   }
   
   return (
-    <View style={styles.container}>
-      <StatusBar style="auto" />
+    <SafeContainer style={styles.container}>
+      <StatusBar style="dark" />
       
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -314,7 +325,7 @@ export default function ProductDetail() {
         stores={stores}
         loading={loadingPrices}
       />
-    </View>
+    </SafeContainer>
   );
 }
 
@@ -352,8 +363,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 16,
+    paddingVertical: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',

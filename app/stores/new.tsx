@@ -1,83 +1,77 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  TouchableOpacity, 
+  TextInput, 
+  ActivityIndicator, 
+  Alert
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { ProductService } from '../../lib/products';
+import { StoreService } from '../../lib/stores';
 import { supabase } from '../../lib/supabase';
-import CategorySelector from '../../components/CategorySelector';
 import SafeContainer from '../../components/SafeContainer';
 
-export default function NewProduct() {
+export default function NewStore() {
   const router = useRouter();
   
   // Estados para gerenciar os dados do formulário
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
   
   // Validar formulário
   const isFormValid = name.trim().length > 0;
   
-  // Salvar novo produto
-  const handleSaveProduct = async () => {
+  // Salvar nova loja
+  const handleSaveStore = async () => {
     if (!isFormValid) {
-      Alert.alert('Erro', 'Por favor, informe pelo menos o nome do produto');
+      Alert.alert('Erro', 'Por favor, informe pelo menos o nome da loja');
       return;
     }
     
     try {
       setSaving(true);
       
-      // Primeiro, criar o produto genérico
+      // Buscar o usuário atual
       const { data: { user } } = await supabase.auth.getUser();
+      
       if (!user) {
         Alert.alert('Erro', 'Usuário não autenticado');
         return;
       }
-
-      const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
+      
+      const { data, error } = await StoreService.createStore({
         name: name.trim(),
-        category: selectedCategory || null,
-        user_id: user.id,
-      });
-
-      if (genericError || !genericProduct) {
-        Alert.alert('Erro', 'Não foi possível criar o produto genérico');
-        return;
-      }
-
-      // Depois, criar o produto específico
-      const { data, error } = await ProductService.createSpecificProduct({
-        generic_product_id: genericProduct.id,
-        name: name.trim(),
-        brand: '',
-        description: description.trim() || undefined,
+        address: address.trim() || undefined,
         user_id: user.id,
       });
       
       if (error) {
-        Alert.alert('Erro', 'Não foi possível cadastrar o produto');
-        console.error('Erro ao cadastrar produto:', error);
+        Alert.alert('Erro', 'Não foi possível cadastrar a loja');
+        console.error('Erro ao cadastrar loja:', error);
         return;
       }
       
       if (data) {
         Alert.alert(
           'Sucesso', 
-          'Produto cadastrado com sucesso!',
+          'Loja cadastrada com sucesso!',
           [
             { 
               text: 'OK', 
-              onPress: () => router.replace(`/product/${data.id}`)
+              onPress: () => router.replace(`/stores/${data.id}`)
             }
           ]
         );
       }
     } catch (error) {
-      console.error('Erro ao cadastrar produto:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao cadastrar o produto');
+      console.error('Erro ao cadastrar loja:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao cadastrar a loja');
     } finally {
       setSaving(false);
     }
@@ -92,47 +86,40 @@ export default function NewProduct() {
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         
-        <Text style={styles.headerTitle}>Novo Produto</Text>
+        <Text style={styles.headerTitle}>Nova Loja</Text>
         
         <View style={{ width: 24 }} />
       </View>
       
       <ScrollView style={styles.content}>
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Nome do Produto *</Text>
+          <Text style={styles.label}>Nome da Loja *</Text>
           <TextInput
             style={styles.input}
-            placeholder="Ex: Arroz Integral"
+            placeholder="Ex: Supermercado ABC"
             value={name}
             onChangeText={setName}
             maxLength={100}
+            autoFocus
           />
         </View>
         
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Descrição</Text>
+          <Text style={styles.label}>Endereço</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Descrição do produto (opcional)"
-            value={description}
-            onChangeText={setDescription}
+            placeholder="Endereço da loja (opcional)"
+            value={address}
+            onChangeText={setAddress}
             multiline
-            numberOfLines={4}
-            maxLength={500}
-          />
-        </View>
-        
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Categoria</Text>
-          <CategorySelector 
-            selectedCategory={selectedCategory} 
-            onSelectCategory={setSelectedCategory} 
+            numberOfLines={3}
+            maxLength={300}
           />
         </View>
         
         <TouchableOpacity 
           style={[styles.saveButton, (!isFormValid || saving) && styles.buttonDisabled]}
-          onPress={handleSaveProduct}
+          onPress={handleSaveStore}
           disabled={!isFormValid || saving}
         >
           {saving ? (
@@ -140,7 +127,7 @@ export default function NewProduct() {
           ) : (
             <>
               <Ionicons name="save-outline" size={20} color="#fff" />
-              <Text style={styles.saveButtonText}>Salvar Produto</Text>
+              <Text style={styles.saveButtonText}>Salvar Loja</Text>
             </>
           )}
         </TouchableOpacity>
@@ -194,7 +181,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   textArea: {
-    minHeight: 100,
+    minHeight: 80,
     textAlignVertical: 'top',
   },
   saveButton: {

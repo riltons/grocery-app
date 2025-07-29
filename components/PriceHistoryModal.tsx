@@ -15,6 +15,7 @@ type PriceRecord = {
   price: number;
   date: string;
   store?: Store;
+  stores?: Store;
 };
 
 type PriceHistoryModalProps = {

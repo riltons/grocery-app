@@ -19,7 +19,7 @@ Crie um aplicativo mobile de lista de supermercado utilizando a stack:
 - Interface minimalista, temas claro/escuro, acessibilidade completa.
 - Autenticação segura (biometria, SSO), criptografia, consentimento LGPD.
 
-## Estrutura de Dados (Supabase)
+## Estrutura de Dados 
 
 - Tabelas: generic_products, specific_products, list_items, list_item_products, stores, users.
 - Políticas RLS para segurança por usuário.

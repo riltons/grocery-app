@@ -10,9 +10,17 @@ export const StoreService = {
    */
   getStores: async () => {
     try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { data, error } = await supabase
         .from('stores')
         .select('*')
+        .eq('user_id', user.id)
         .order('name');
 
       if (error) throw error;
@@ -28,10 +36,18 @@ export const StoreService = {
    */
   getStoreById: async (id: string) => {
     try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { data, error } = await supabase
         .from('stores')
         .select('*')
         .eq('id', id)
+        .eq('user_id', user.id)
         .single();
 
       if (error) throw error;
@@ -66,10 +82,18 @@ export const StoreService = {
    */
   updateStore: async (id: string, updates: Partial<Store>) => {
     try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { data, error } = await supabase
         .from('stores')
         .update(updates)
         .eq('id', id)
+        .eq('user_id', user.id)
         .select()
         .single();
 
@@ -86,10 +110,18 @@ export const StoreService = {
    */
   deleteStore: async (id: string) => {
     try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { error } = await supabase
         .from('stores')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('user_id', user.id);
 
       if (error) throw error;
       return { error: null };
@@ -172,6 +204,25 @@ export const StoreService = {
     } catch (error) {
       console.error('Erro ao remover registro de preço:', error);
       return { error };
+    }
+  },
+
+  /**
+   * Busca o histórico de preços de uma loja específica
+   */
+  getPriceHistoryByStore: async (storeId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('price_history')
+        .select('*, specific_products(*)')
+        .eq('store_id', storeId)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar histórico de preços da loja:', error);
+      return { data: null, error };
     }
   },
 };

@@ -1,19 +1,27 @@
 import { supabase } from './supabase';
-import { List, ListItem, ListItemProduct } from './supabase';
+import type { List } from './supabase';
 
 /**
- * Serviço para gerenciar operações com listas de compras e seus itens
+ * Serviço para gerenciar listas de compras
  */
-export const ListService = {
+export const ListsService = {
   /**
-   * Busca todas as listas do usuário
+   * Busca todas as listas do usuário atual
    */
-  getLists: async () => {
+  getUserLists: async () => {
     try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { data, error } = await supabase
         .from('lists')
         .select('*')
-        .order('created_at', { ascending: false });
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
 
       if (error) throw error;
       return { data, error: null };
@@ -24,46 +32,25 @@ export const ListService = {
   },
 
   /**
-   * Busca uma lista pelo ID
+   * Cria uma nova lista de compras
    */
-  getListById: async (id: string) => {
+  createList: async (name: string) => {
     try {
-      const { data, error } = await supabase
-        .from('lists')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      return { data, error: null };
-    } catch (error) {
-      console.error('Erro ao buscar lista:', error);
-      return { data: null, error };
-    }
-  },
-
-  /**
-   * Cria uma nova lista
-   */
-  createList: async (list: Omit<List, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => {
-    try {
-      // Obtém o usuário atual
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user?.id;
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
       
-      if (!userId) {
+      if (!user) {
         throw new Error('Usuário não autenticado');
       }
-      
-      // Adiciona o ID do usuário ao objeto da lista
-      const listWithUserId = {
-        ...list,
-        user_id: userId
-      };
 
       const { data, error } = await supabase
         .from('lists')
-        .insert(listWithUserId)
+        .insert([
+          {
+            name,
+            user_id: user.id,
+          }
+        ])
         .select()
         .single();
 
@@ -76,20 +63,25 @@ export const ListService = {
   },
 
   /**
-   * Atualiza uma lista
+   * Atualiza uma lista existente
    */
-  updateList: async (id: string, updates: Partial<List>) => {
+  updateList: async (id: string, name: string) => {
     try {
-      // Atualiza também o campo updated_at
-      const updatesWithTimestamp = {
-        ...updates,
-        updated_at: new Date().toISOString(),
-      };
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
 
       const { data, error } = await supabase
         .from('lists')
-        .update(updatesWithTimestamp)
+        .update({
+          name,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', id)
+        .eq('user_id', user.id)
         .select()
         .single();
 
@@ -102,20 +94,55 @@ export const ListService = {
   },
 
   /**
-   * Remove uma lista
+   * Deleta uma lista
    */
   deleteList: async (id: string) => {
     try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { error } = await supabase
         .from('lists')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('user_id', user.id);
 
       if (error) throw error;
       return { error: null };
     } catch (error) {
-      console.error('Erro ao remover lista:', error);
+      console.error('Erro ao deletar lista:', error);
       return { error };
+    }
+  },
+
+  /**
+   * Busca uma lista específica por ID
+   */
+  getListById: async (id: string) => {
+    try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('lists')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar lista:', error);
+      return { data: null, error };
     }
   },
 
@@ -124,17 +151,51 @@ export const ListService = {
    */
   getListItems: async (listId: string) => {
     try {
-      const { data, error } = await supabase
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Busca itens com produtos associados
+      const { data: itemsWithProducts, error: error1 } = await supabase
         .from('list_items')
         .select(`
           *,
-          list_item_products(*, specific_products(*, generic_products(*)))
+          list_item_products (
+            specific_products (
+              id,
+              name,
+              brand,
+              generic_product_id,
+              generic_products (
+                name,
+                category
+              )
+            )
+          )
         `)
         .eq('list_id', listId)
-        .order('created_at');
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return { data, error: null };
+      if (error1) throw error1;
+
+      // Processar os dados para incluir informações do produto
+      const processedData = itemsWithProducts?.map(item => {
+        const productInfo = item.list_item_products?.[0]?.specific_products;
+        return {
+          ...item,
+          product_name: productInfo?.name || 'Produto desconhecido',
+          product_brand: productInfo?.brand || '',
+          product_id: productInfo?.id || null,
+          generic_product_name: productInfo?.generic_products?.name || '',
+          category: productInfo?.generic_products?.category || '',
+        };
+      });
+
+      return { data: processedData, error: null };
     } catch (error) {
       console.error('Erro ao buscar itens da lista:', error);
       return { data: null, error };
@@ -142,49 +203,138 @@ export const ListService = {
   },
 
   /**
-   * Cria um novo item na lista
+   * Busca um produto específico por nome
    */
-  createListItem: async (item: Omit<ListItem, 'id' | 'created_at' | 'updated_at'>) => {
+  findProductByName: async (productName: string) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { data, error } = await supabase
+        .from('specific_products')
+        .select('*')
+        .eq('user_id', user.id)
+        .ilike('name', `%${productName}%`)
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
+      return { data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Adiciona um item à lista
+   */
+  addListItem: async (listId: string, item: {
+    product_name: string;
+    quantity: number;
+    unit: string;
+    checked: boolean;
+    product_id?: string;
+  }) => {
+    try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      let productId = item.product_id;
+
+      // Se não foi fornecido um product_id, tenta encontrar um produto existente pelo nome
+      if (!productId) {
+        const { data: existingProduct } = await ListsService.findProductByName(item.product_name);
+        if (existingProduct) {
+          productId = existingProduct.id;
+        }
+      }
+
+      // Primeiro, cria o item da lista
+      const { data: listItemData, error: listItemError } = await supabase
         .from('list_items')
-        .insert(item)
+        .insert([
+          {
+            list_id: listId,
+            quantity: item.quantity,
+            unit: item.unit,
+            checked: item.checked,
+            user_id: user.id,
+          }
+        ])
         .select()
         .single();
 
-      if (error) throw error;
-      return { data, error: null };
+      if (listItemError) throw listItemError;
+
+      // Se um product_id foi encontrado ou fornecido, cria a relação na tabela list_item_products
+      if (productId && listItemData) {
+        const { error: relationError } = await supabase
+          .from('list_item_products')
+          .insert([
+            {
+              list_item_id: listItemData.id,
+              specific_product_id: productId,
+              user_id: user.id,
+            }
+          ]);
+
+        if (relationError) {
+          console.error('Erro ao criar relação produto-item:', relationError);
+          // Não falha a operação, apenas loga o erro
+        }
+      }
+
+      return { 
+        data: { 
+          ...listItemData, 
+          product_name: item.product_name,
+          product_id: productId || null
+        }, 
+        error: null 
+      };
     } catch (error) {
-      console.error('Erro ao criar item na lista:', error);
+      console.error('Erro ao adicionar item:', error);
       return { data: null, error };
     }
   },
 
   /**
    * Atualiza um item da lista
-   * @param listId ID da lista (opcional, usado apenas para verificação)
-   * @param itemId ID do item a ser atualizado
-   * @param updates Dados a serem atualizados
    */
-  updateListItem: async (listId: string, itemId: string, updates: Partial<ListItem>) => {
+  updateListItem: async (listId: string, itemId: string, updates: any) => {
     try {
-      // Atualiza também o campo updated_at
-      const updatesWithTimestamp = {
-        ...updates,
-        updated_at: new Date().toISOString(),
-      };
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
 
       const { data, error } = await supabase
         .from('list_items')
-        .update(updatesWithTimestamp)
+        .update({
+          quantity: updates.quantity,
+          unit: updates.unit,
+          checked: updates.checked,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', itemId)
+        .eq('list_id', listId)
+        .eq('user_id', user.id)
         .select()
         .single();
 
       if (error) throw error;
       return { data, error: null };
     } catch (error) {
-      console.error('Erro ao atualizar item da lista:', error);
+      console.error('Erro ao atualizar item:', error);
       return { data: null, error };
     }
   },
@@ -192,111 +342,26 @@ export const ListService = {
   /**
    * Remove um item da lista
    */
-  deleteListItem: async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('list_items')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      return { error: null };
-    } catch (error) {
-      console.error('Erro ao remover item da lista:', error);
-      return { error };
-    }
-  },
-
-  /**
-   * Associa um produto específico a um item da lista
-   */
-  addProductToListItem: async (itemProduct: Omit<ListItemProduct, 'id' | 'created_at'>) => {
-    try {
-      const { data, error } = await supabase
-        .from('list_item_products')
-        .insert(itemProduct)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { data, error: null };
-    } catch (error) {
-      console.error('Erro ao adicionar produto ao item da lista:', error);
-      return { data: null, error };
-    }
-  },
-
-  /**
-   * Remove a associação de um produto específico a um item da lista
-   */
-  removeProductFromListItem: async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('list_item_products')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      return { error: null };
-    } catch (error) {
-      console.error('Erro ao remover produto do item da lista:', error);
-      return { error };
-    }
-  },
-
-  /**
-   * Adiciona um novo item à lista
-   * @param listId ID da lista onde o item será adicionado
-   * @param item Dados do item a ser adicionado
-   */
-  addListItem: async (listId: string, item: Omit<ListItem, 'id' | 'list_id' | 'created_at' | 'updated_at' | 'user_id'> & { product_name?: string }) => {
-    try {
-      // Obtém o usuário atual
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user?.id;
-      
-      if (!userId) {
-        throw new Error('Usuário não autenticado');
-      }
-      
-      // Prepara o item com o ID da lista e o ID do usuário
-      const itemWithListId = {
-        ...item,
-        list_id: listId,
-        user_id: userId
-      };
-
-      const { data, error } = await supabase
-        .from('list_items')
-        .insert(itemWithListId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return { data, error: null };
-    } catch (error) {
-      console.error('Erro ao adicionar item à lista:', error);
-      return { data: null, error };
-    }
-  },
-
-  /**
-   * Remove um item de uma lista específica
-   * @param listId ID da lista de onde o item será removido
-   * @param itemId ID do item a ser removido
-   */
   removeListItem: async (listId: string, itemId: string) => {
     try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { error } = await supabase
         .from('list_items')
         .delete()
         .eq('id', itemId)
-        .eq('list_id', listId);
+        .eq('list_id', listId)
+        .eq('user_id', user.id);
 
       if (error) throw error;
       return { error: null };
     } catch (error) {
-      console.error('Erro ao remover item da lista:', error);
+      console.error('Erro ao remover item:', error);
       return { error };
     }
   },

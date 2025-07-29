@@ -1,99 +1,105 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  TouchableOpacity, 
+  ActivityIndicator, 
+  TextInput,
+  Alert
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { ProductService } from '../../lib/products';
+import { StoreService } from '../../lib/stores';
 import SafeContainer from '../../components/SafeContainer';
+import type { Store } from '../../lib/supabase';
 
-// Tipos para os produtos
-type Product = {
-  id: string;
-  name: string;
-  description?: string;
-  image_url?: string;
-  created_at: string;
-  brand?: string;
-  generic_products?: {
-    name: string;
-    category: string | null;
-  };
-};
-
-export default function ProductList() {
+export default function StoresList() {
   const router = useRouter();
   
   // Estados para gerenciar os dados
-  const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [filteredStores, setFilteredStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
   
-  // Carregar produtos
-  const fetchProducts = async () => {
+  // Carregar lojas
+  const fetchStores = async () => {
     try {
       setLoading(true);
       
-      // Buscar produtos específicos
-      const { data, error } = await ProductService.getSpecificProducts();
+      const { data, error } = await StoreService.getStores();
       
       if (error) {
-        console.error('Erro ao buscar produtos:', error);
+        console.error('Erro ao buscar lojas:', error);
+        Alert.alert('Erro', 'Não foi possível carregar as lojas');
         return;
       }
       
       if (data) {
-        setProducts(data);
-        setFilteredProducts(data);
+        setStores(data);
+        setFilteredStores(data);
       }
     } catch (error) {
-      console.error('Erro ao buscar produtos:', error);
+      console.error('Erro ao buscar lojas:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao carregar as lojas');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
   
-  // Carregar produtos quando o componente montar
+  // Carregar lojas quando o componente montar
   useEffect(() => {
-    fetchProducts();
+    fetchStores();
   }, []);
   
-  // Filtrar produtos quando o texto de busca mudar
+  // Filtrar lojas quando o texto de busca mudar
   useEffect(() => {
     if (searchText.trim() === '') {
-      setFilteredProducts(products);
+      setFilteredStores(stores);
     } else {
-      const filtered = products.filter(product =>
-        product.name.toLowerCase().includes(searchText.toLowerCase())
+      const filtered = stores.filter(store =>
+        store.name.toLowerCase().includes(searchText.toLowerCase()) ||
+        (store.address && store.address.toLowerCase().includes(searchText.toLowerCase()))
       );
-      setFilteredProducts(filtered);
+      setFilteredStores(filtered);
     }
-  }, [searchText, products]);
+  }, [searchText, stores]);
   
   // Função para atualizar a lista (pull-to-refresh)
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchProducts();
+    fetchStores();
   };
   
-  // Navegar para a tela de detalhes do produto
-  const handleProductPress = (productId: string) => {
-    router.push(`/product/${productId}`);
+  // Navegar para a tela de detalhes da loja
+  const handleStorePress = (storeId: string) => {
+    router.push(`/stores/${storeId}`);
+  };
+
+  // Navegar para criar nova loja
+  const handleCreateStore = () => {
+    router.push('/stores/new');
   };
   
   // Renderizar cada item da lista
-  const renderProductItem = ({ item }: { item: Product }) => (
+  const renderStoreItem = ({ item }: { item: Store }) => (
     <TouchableOpacity 
-      style={styles.productItem}
-      onPress={() => handleProductPress(item.id)}
+      style={styles.storeItem}
+      onPress={() => handleStorePress(item.id)}
     >
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        {item.description && (
-          <Text style={styles.productDescription} numberOfLines={1}>
-            {item.description}
+      <View style={styles.storeIcon}>
+        <Ionicons name="storefront" size={24} color="#4CAF50" />
+      </View>
+      <View style={styles.storeInfo}>
+        <Text style={styles.storeName}>{item.name}</Text>
+        {item.address && (
+          <Text style={styles.storeAddress} numberOfLines={1}>
+            {item.address}
           </Text>
         )}
       </View>
@@ -106,10 +112,16 @@ export default function ProductList() {
       <StatusBar style="dark" />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Meus Produtos</Text>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Minhas Lojas</Text>
         <TouchableOpacity 
           style={styles.addButton}
-          onPress={() => router.push('/product/new')}
+          onPress={handleCreateStore}
         >
           <Ionicons name="add" size={24} color="#fff" />
         </TouchableOpacity>
@@ -119,7 +131,7 @@ export default function ProductList() {
         <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Buscar produtos..."
+          placeholder="Buscar lojas..."
           value={searchText}
           onChangeText={setSearchText}
         />
@@ -133,30 +145,30 @@ export default function ProductList() {
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#4CAF50" />
-          <Text style={styles.loadingText}>Carregando produtos...</Text>
+          <Text style={styles.loadingText}>Carregando lojas...</Text>
         </View>
       ) : (
         <FlatList
-          data={filteredProducts}
-          renderItem={renderProductItem}
+          data={filteredStores}
+          renderItem={renderStoreItem}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.productList}
+          contentContainerStyle={styles.storeList}
           onRefresh={handleRefresh}
           refreshing={refreshing}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="basket-outline" size={48} color="#ccc" />
+              <Ionicons name="storefront-outline" size={48} color="#ccc" />
               <Text style={styles.emptyText}>
                 {searchText.length > 0 
-                  ? 'Nenhum produto encontrado'
-                  : 'Nenhum produto cadastrado'}
+                  ? 'Nenhuma loja encontrada'
+                  : 'Nenhuma loja cadastrada'}
               </Text>
               {searchText.length === 0 && (
                 <TouchableOpacity 
                   style={styles.emptyButton}
-                  onPress={() => router.push('/product/new')}
+                  onPress={handleCreateStore}
                 >
-                  <Text style={styles.emptyButtonText}>Adicionar Produto</Text>
+                  <Text style={styles.emptyButtonText}>Adicionar Loja</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -181,6 +193,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  backButton: {
+    padding: 8,
   },
   headerTitle: {
     fontSize: 20,
@@ -223,13 +238,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  productList: {
+  storeList: {
     padding: 16,
   },
-  productItem: {
+  storeItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#f9f9f9',
     padding: 16,
     borderRadius: 8,
@@ -237,15 +251,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
-  productInfo: {
+  storeIcon: {
+    marginRight: 12,
+  },
+  storeInfo: {
     flex: 1,
   },
-  productName: {
+  storeName: {
     fontSize: 16,
     fontWeight: '500',
     color: '#333',
   },
-  productDescription: {
+  storeAddress: {
     fontSize: 14,
     color: '#666',
     marginTop: 4,
