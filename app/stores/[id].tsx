@@ -14,11 +14,14 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { StoreService } from '../../lib/stores';
 import SafeContainer from '../../components/SafeContainer';
+import Toast from '../../components/Toast';
+import { useToast } from '../../lib/useToast';
 import type { Store, PriceHistory } from '../../lib/supabase';
 
 export default function StoreDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { toast, showSuccess, showError, hideToast } = useToast();
   
   // Estados para gerenciar os dados
   const [store, setStore] = useState<Store | null>(null);
@@ -88,7 +91,7 @@ export default function StoreDetail() {
       if (error) {
         Alert.alert('Erro', 'Não foi possível atualizar a loja');
       } else {
-        Alert.alert('Sucesso', 'Loja atualizada com sucesso!');
+        showSuccess('Loja atualizada com sucesso!');
         setStore(prev => prev ? { ...prev, name: name.trim(), address: address.trim() || undefined } : null);
         setEditing(false);
       }
@@ -126,8 +129,11 @@ export default function StoreDetail() {
               if (error) {
                 Alert.alert('Erro', 'Não foi possível excluir a loja');
               } else {
-                Alert.alert('Sucesso', 'Loja excluída com sucesso!');
-                router.replace('/stores');
+                showSuccess('Loja excluída com sucesso!');
+                // Aguardar um pouco para o usuário ver o toast, depois navegar
+                setTimeout(() => {
+                  router.replace('/stores');
+                }, 1500);
               }
             } catch (error) {
               console.error('Erro ao excluir loja:', error);
@@ -276,6 +282,13 @@ export default function StoreDetail() {
           </View>
         )}
       </ScrollView>
+      
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </SafeContainer>
   );
 }

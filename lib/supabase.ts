@@ -44,7 +44,27 @@ export type SpecificProduct = {
   brand: string;
   description?: string; // Adicionada propriedade description
   image_url?: string;
+  default_unit?: string; // Unidade padrão do produto
+  barcode?: string; // Código de barras do produto
+  barcode_type?: string; // Tipo do código de barras (EAN13, UPC, etc.)
+  external_id?: string; // ID do produto em APIs externas
+  data_source?: string; // Fonte dos dados (local, cosmos, openfoodfacts, manual)
+  confidence_score?: number; // Pontuação de confiança dos dados
+  last_external_sync?: string; // Última sincronização com APIs externas
   created_at: string;
+  user_id: string;
+};
+
+// Tipo para cache de códigos de barras
+export type BarcodeCache = {
+  id: string;
+  barcode: string;
+  barcode_type: string;
+  product_data: any; // JSON com dados do produto
+  source: string; // Fonte dos dados
+  confidence_score?: number;
+  created_at: string;
+  expires_at?: string;
   user_id: string;
 };
 
@@ -54,6 +74,11 @@ export type List = {
   created_at: string;
   updated_at: string;
   user_id: string;
+  is_shared?: boolean;
+  share_settings?: {
+    allowInvites: boolean;
+    defaultPermission: 'view' | 'edit' | 'admin';
+  };
 };
 
 export type ListItem = {
@@ -91,4 +116,44 @@ export type PriceHistory = {
   date: string;
   created_at: string;
   user_id: string;
+};
+
+// Tipos para compartilhamento de listas
+export type SharePermission = 'view' | 'edit' | 'admin';
+
+export type ListShare = {
+  id: string;
+  list_id: string;
+  user_id: string;
+  permission: SharePermission;
+  created_at: string;
+  created_by: string;
+};
+
+export type InvitationStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+
+export type Invitation = {
+  id: string;
+  list_id: string;
+  inviter_user_id: string;
+  invitee_email: string;
+  invitee_user_id?: string;
+  permission: SharePermission;
+  status: InvitationStatus;
+  expires_at: string;
+  created_at: string;
+  responded_at?: string;
+};
+
+export type ShareLink = {
+  id: string;
+  list_id: string;
+  token: string;
+  permission: SharePermission;
+  expires_at: string;
+  max_uses?: number;
+  current_uses: number;
+  created_by: string;
+  created_at: string;
+  is_active: boolean;
 };

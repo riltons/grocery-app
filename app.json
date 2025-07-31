@@ -40,6 +40,9 @@
       "buildNumber": "1.0.0",
       "statusBar": {
         "style": "dark"
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "Este aplicativo precisa acessar a câmera para escanear códigos de barras dos produtos."
       }
     },
     "android": {
@@ -49,7 +52,10 @@
       },
       "package": "com.riltongarcia.groceryapp",
       "versionCode": 1,
-      "permissions": [],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "softwareKeyboardLayoutMode": "pan",
       "statusBar": {
         "backgroundColor": "#ffffff",
@@ -71,6 +77,12 @@
             "node_modules/@expo-google-fonts/merriweather/Merriweather_400Regular.ttf",
             "node_modules/@expo-google-fonts/fira-code/FiraCode_400Regular.ttf"
           ]
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Este aplicativo precisa acessar a câmera para escanear códigos de barras dos produtos."
         }
       ]
     ],

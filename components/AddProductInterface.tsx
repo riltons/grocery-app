@@ -9,9 +9,15 @@ import {
   FlatList,
   Animated,
   Keyboard,
+  Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { SpecificProduct } from '../lib/supabase';
+import type { SpecificProduct, GenericProduct } from '../lib/supabase';
+import SimpleBarcodeScanner from './SimpleBarcodeScanner';
+import ScanResultModal from './ScanResultModal';
+import { BarcodeService, ProductInfo, BarcodeResult, GenericProductMatcher, SpecificProductCreationService } from '../lib/barcode';
+import { supabase } from '../lib/supabase';
 
 interface AddProductInterfaceProps {
   onAddProduct: (productName: string, quantity: number, unit: string) => Promise<void>;
@@ -39,6 +45,14 @@ export default function AddProductInterface({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<SpecificProduct[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Scanner states
+  const [showScanner, setShowScanner] = useState(false);
+  const [showScanResult, setShowScanResult] = useState(false);
+  const [scannedProduct, setScannedProduct] = useState<ProductInfo | null>(null);
+  const [suggestedGenericProducts, setSuggestedGenericProducts] = useState<GenericProduct[]>([]);
+  const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
+  const [scannerLoading, setScannerLoading] = useState(false);
   
   const slideAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
@@ -118,6 +132,210 @@ export default function AddProductInterface({
     }
   };
 
+  // Scanner functions
+  const handleOpenScanner = () => {
+    setShowScanner(true);
+  };
+
+  const handleCloseScanner = () => {
+    setShowScanner(false);
+  };
+
+  const handleManualEntry = () => {
+    setShowScanner(false);
+    // Focus on the input field for manual entry
+    setTimeout(() => {
+      inputRef.current?.focus();
+      setIsExpanded(true);
+    }, 100);
+  };
+
+  const handleBarcodeScanned = async (result: BarcodeResult) => {
+    console.log('Código de barras escaneado:', result);
+    setShowScanner(false);
+    setScannerLoading(true);
+
+    try {
+      // Process the barcode using BarcodeService
+      const searchResult = await BarcodeService.searchWithFallback(result.data);
+      let productInfo = searchResult.found ? searchResult.product : null;
+      
+      // Se não encontrou o produto, criar um produto básico com o código de barras
+      if (!productInfo) {
+        productInfo = {
+          barcode: result.data,
+          name: `Produto ${result.data}`,
+          brand: '',
+          category: '',
+          description: '',
+          image_url: '',
+          data_source: 'manual',
+          confidence_score: 0.5
+        };
+      }
+      
+      setScannedProduct(productInfo);
+      
+      // Get suggested generic products
+      const suggestions = await GenericProductMatcher.suggestGenericProducts(
+        productInfo.name, 
+        productInfo.category
+      );
+      // Extract just the GenericProduct objects from the suggestions
+      const genericProducts = suggestions.map(s => s.product);
+      setSuggestedGenericProducts(genericProducts);
+      
+      // Try to auto-select a generic product
+      if (suggestions.length > 0) {
+        setSelectedGenericProduct(suggestions[0].product);
+      }
+      
+      setShowScanResult(true);
+    } catch (error) {
+      console.error('Erro ao processar código de barras:', error);
+      // Fallback to manual entry
+      handleManualEntry();
+    } finally {
+      setScannerLoading(false);
+    }
+  };
+
+  const handleScanResultConfirm = async (
+    product: ProductInfo, 
+    genericProduct: GenericProduct | null, 
+    priceInfo?: any
+  ) => {
+    try {
+      setScannerLoading(true);
+      
+      // If no generic product is selected, create one automatically
+      let genericProductId = genericProduct?.id;
+      
+      if (!genericProductId) {
+        console.log('Nenhum produto genérico selecionado, criando automaticamente...');
+        
+        // Ensure user is authenticated before creating generic product
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.id) {
+          Alert.alert('Erro', 'Usuário não autenticado. Faça login novamente.');
+          return;
+        }
+        
+        // Create generic product automatically
+        const genericResult = await SpecificProductCreationService.createGenericProductFromProductInfo(product);
+        
+        if (genericResult.success && genericResult.product) {
+          genericProductId = genericResult.product.id;
+          console.log('Produto genérico criado automaticamente:', genericResult.product.name);
+        } else {
+          console.error('Erro ao criar produto genérico:', genericResult.errors);
+          Alert.alert(
+            'Erro', 
+            `Não foi possível criar o produto genérico automaticamente:\n${genericResult.errors.join('\n')}`
+          );
+          return;
+        }
+      }
+      
+      // Use the validation function that checks for duplicates
+      const result = await SpecificProductCreationService.createSpecificProductWithValidation(
+        product, 
+        genericProductId,
+        { createGenericIfNotExists: true }
+      );
+      
+      if (result.success && result.product) {
+        // TODO: Handle price info separately if needed
+        if (priceInfo) {
+          console.log('Price info received:', priceInfo);
+        }
+        
+        const qty = parseFloat(quantity) || 1;
+        await onSelectProduct(result.product, qty, selectedUnit);
+        
+        // Reset scanner state
+        setShowScanResult(false);
+        setScannedProduct(null);
+        setSuggestedGenericProducts([]);
+        setSelectedGenericProduct(null);
+        
+        // Reset form
+        setQuantity('1');
+        setSelectedUnit('un');
+        setIsExpanded(false);
+      } else if (result.errors && result.errors.length > 0) {
+        // Handle duplicate or validation errors
+        if (result.errors.some(error => error.includes('já existe'))) {
+          Alert.alert(
+            'Produto já existe',
+            'Este produto já foi adicionado anteriormente. Deseja usar o produto existente?',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { 
+                text: 'Usar existente', 
+                onPress: async () => {
+                  // Try to find the existing product and use it
+                  try {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (user) {
+                      const { data: existingProduct } = await supabase
+                        .from('specific_products')
+                        .select('*')
+                        .eq('barcode', product.barcode)
+                        .eq('user_id', user.id)
+                        .single();
+                      
+                      if (existingProduct) {
+                        const qty = parseFloat(quantity) || 1;
+                        await onSelectProduct(existingProduct, qty, selectedUnit);
+                        
+                        // Reset scanner state
+                        setShowScanResult(false);
+                        setScannedProduct(null);
+                        setSuggestedGenericProducts([]);
+                        setSelectedGenericProduct(null);
+                        
+                        // Reset form
+                        setQuantity('1');
+                        setSelectedUnit('un');
+                        setIsExpanded(false);
+                      }
+                    }
+                  } catch (error) {
+                    console.error('Erro ao buscar produto existente:', error);
+                    Alert.alert('Erro', 'Não foi possível encontrar o produto existente');
+                  }
+                }
+              }
+            ]
+          );
+        } else {
+          Alert.alert('Erro', result.errors.join('\n'));
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao confirmar produto escaneado:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao processar o produto escaneado');
+    } finally {
+      setScannerLoading(false);
+    }
+  };
+
+  const handleScanResultCancel = () => {
+    setShowScanResult(false);
+    setScannedProduct(null);
+    setSuggestedGenericProducts([]);
+    setSelectedGenericProduct(null);
+  };
+
+  const handleScanResultEdit = (editedProduct: ProductInfo) => {
+    setScannedProduct(editedProduct);
+  };
+
+  const handleGenericProductChange = (genericProduct: GenericProduct) => {
+    setSelectedGenericProduct(genericProduct);
+  };
+
   const renderSuggestion = ({ item }: { item: SpecificProduct }) => (
     <TouchableOpacity
       style={styles.suggestionItem}
@@ -170,6 +388,14 @@ export default function AddProductInterface({
               returnKeyType="done"
               onSubmitEditing={handleAddProduct}
             />
+            
+            <TouchableOpacity
+              style={styles.scannerButton}
+              onPress={handleOpenScanner}
+              disabled={loading}
+            >
+              <Ionicons name="barcode-outline" size={20} color="#4CAF50" />
+            </TouchableOpacity>
             
             <TouchableOpacity
               style={styles.expandButton}
@@ -290,6 +516,33 @@ export default function AddProductInterface({
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Barcode Scanner Modal */}
+      <Modal
+        visible={showScanner}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={handleCloseScanner}
+      >
+        <SimpleBarcodeScanner
+          onBarcodeScanned={handleBarcodeScanned}
+          onClose={handleCloseScanner}
+          onManualEntry={handleManualEntry}
+        />
+      </Modal>
+
+      {/* Scan Result Modal */}
+      <ScanResultModal
+        visible={showScanResult}
+        productInfo={scannedProduct}
+        suggestedGenericProducts={suggestedGenericProducts}
+        selectedGenericProduct={selectedGenericProduct}
+        onConfirm={handleScanResultConfirm}
+        onEdit={handleScanResultEdit}
+        onGenericProductChange={handleGenericProductChange}
+        onCancel={handleScanResultCancel}
+        loading={scannerLoading}
+      />
     </View>
   );
 }
@@ -348,6 +601,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+  },
+  scannerButton: {
+    marginLeft: 8,
+    padding: 8,
+    backgroundColor: '#f0f8f1',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
   },
   expandButton: {
     marginLeft: 8,

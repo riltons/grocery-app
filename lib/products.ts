@@ -47,13 +47,34 @@ export const ProductService = {
    */
   createGenericProduct: async (product: Omit<GenericProduct, 'id' | 'created_at'>) => {
     try {
+      console.log('ProductService.createGenericProduct - Dados recebidos:', product);
+      console.log('ProductService.createGenericProduct - Validação:', {
+        name: product.name,
+        name_length: product.name?.length,
+        category: product.category,
+        user_id: product.user_id,
+        user_id_type: typeof product.user_id,
+        user_id_valid: product.user_id && product.user_id.length > 0
+      });
+
       const { data, error } = await supabase
         .from('generic_products')
         .insert(product)
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro detalhado ao criar produto genérico:', {
+          error,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw error;
+      }
+      
+      console.log('Produto genérico criado com sucesso:', data);
       return { data, error: null };
     } catch (error) {
       console.error('Erro ao criar produto genérico:', error);
@@ -377,6 +398,139 @@ export const ProductService = {
       return { data: sortedProducts, error: null };
     } catch (error) {
       console.error('Erro ao buscar produtos mais usados:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Verifica se já existe um produto com o nome especificado
+   */
+  checkProductExists: async (name: string) => {
+    try {
+      // Busca o usuário atual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Normalizar o nome para comparação (remover espaços e converter para minúsculo)
+      const normalizedName = name.trim().toLowerCase();
+
+      // Buscar produtos genéricos com nome similar
+      const { data: genericProducts, error: genericError } = await supabase
+        .from('generic_products')
+        .select('id, name')
+        .eq('user_id', user.id);
+
+      if (genericError) throw genericError;
+
+      // Verificar se algum produto genérico tem nome similar
+      const genericExists = genericProducts?.some(product => 
+        product.name.trim().toLowerCase() === normalizedName
+      );
+
+      if (genericExists) {
+        return { exists: true, error: null };
+      }
+
+      // Buscar produtos específicos com nome similar
+      const { data: specificProducts, error: specificError } = await supabase
+        .from('specific_products')
+        .select('id, name')
+        .eq('user_id', user.id);
+
+      if (specificError) throw specificError;
+
+      // Verificar se algum produto específico tem nome similar
+      const specificExists = specificProducts?.some(product => 
+        product.name.trim().toLowerCase() === normalizedName
+      );
+
+      return { exists: specificExists || false, error: null };
+    } catch (error) {
+      console.error('Erro ao verificar se produto existe:', error);
+      return { exists: false, error };
+    }
+  },
+
+  /**
+   * Busca produto específico por código de barras
+   */
+  getSpecificProductByBarcode: async (barcode: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('specific_products')
+        .select('*, generic_products(*)')
+        .eq('barcode', barcode)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+
+      return { data: data || null, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar produto por código de barras:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Busca produtos específicos que possuem código de barras
+   */
+  getScannedProducts: async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('specific_products')
+        .select('*, generic_products(*)')
+        .not('barcode', 'is', null)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar produtos escaneados:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Busca produtos específicos criados manualmente (sem código de barras)
+   */
+  getManualProducts: async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('specific_products')
+        .select('*, generic_products(*)')
+        .is('barcode', null)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar produtos manuais:', error);
       return { data: null, error };
     }
   },

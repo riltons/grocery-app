@@ -11,7 +11,12 @@
         "sbp_bfc796145375ee8073aa8325ac6c56e8e781b7b4"
       ],
       "disabled": false,
-      "autoApprove": []
+      "autoApprove": [
+        "search_docs",
+        "list_projects",
+        "apply_migration",
+        "list_tables"
+      ]
     }
   }
 }

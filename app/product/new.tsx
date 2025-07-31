@@ -7,9 +7,12 @@ import { ProductService } from '../../lib/products';
 import { supabase } from '../../lib/supabase';
 import CategorySelector from '../../components/CategorySelector';
 import SafeContainer from '../../components/SafeContainer';
+import Toast from '../../components/Toast';
+import { useToast } from '../../lib/useToast';
 
 export default function NewProduct() {
   const router = useRouter();
+  const { toast, showSuccess, showError, hideToast } = useToast();
   
   // Estados para gerenciar os dados do formulário
   const [name, setName] = useState('');
@@ -30,7 +33,24 @@ export default function NewProduct() {
     try {
       setSaving(true);
       
-      // Primeiro, criar o produto genérico
+      // Primeiro, verificar se o produto já existe
+      const { exists, error: checkError } = await ProductService.checkProductExists(name.trim());
+      
+      if (checkError) {
+        console.error('Erro ao verificar produto:', checkError);
+        Alert.alert('Erro', 'Não foi possível verificar se o produto já existe');
+        return;
+      }
+      
+      if (exists) {
+        Alert.alert(
+          'Produto já existe', 
+          `Já existe um produto com o nome "${name.trim()}". Por favor, escolha um nome diferente.`
+        );
+        return;
+      }
+      
+      // Buscar usuário autenticado
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Erro', 'Usuário não autenticado');
@@ -54,26 +74,22 @@ export default function NewProduct() {
         name: name.trim(),
         brand: '',
         description: description.trim() || undefined,
+        default_unit: 'un', // Unidade padrão inicial
         user_id: user.id,
       });
       
       if (error) {
-        Alert.alert('Erro', 'Não foi possível cadastrar o produto');
         console.error('Erro ao cadastrar produto:', error);
+        Alert.alert('Erro', 'Ocorreu um erro ao cadastrar o produto');
         return;
       }
       
       if (data) {
-        Alert.alert(
-          'Sucesso', 
-          'Produto cadastrado com sucesso!',
-          [
-            { 
-              text: 'OK', 
-              onPress: () => router.replace(`/product/${data.id}`)
-            }
-          ]
-        );
+        showSuccess('Produto cadastrado com sucesso!');
+        // Aguardar um pouco para o usuário ver o toast, depois voltar
+        setTimeout(() => {
+          router.back();
+        }, 1500);
       }
     } catch (error) {
       console.error('Erro ao cadastrar produto:', error);
@@ -145,6 +161,13 @@ export default function NewProduct() {
           )}
         </TouchableOpacity>
       </ScrollView>
+      
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </SafeContainer>
   );
 }

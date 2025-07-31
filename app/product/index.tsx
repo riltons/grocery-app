@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Alert } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductService } from '../../lib/products';
 import SafeContainer from '../../components/SafeContainer';
+import Toast from '../../components/Toast';
+import { useToast } from '../../lib/useToast';
 
 // Tipos para os produtos
 type Product = {
@@ -22,6 +24,7 @@ type Product = {
 
 export default function ProductList() {
   const router = useRouter();
+  const { toast, showSuccess, showError, hideToast } = useToast();
   
   // Estados para gerenciar os dados
   const [products, setProducts] = useState<Product[]>([]);
@@ -29,6 +32,7 @@ export default function ProductList() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [deletingProducts, setDeletingProducts] = useState<Set<string>>(new Set());
   
   // Carregar produtos
   const fetchProducts = async () => {
@@ -60,6 +64,13 @@ export default function ProductList() {
     fetchProducts();
   }, []);
   
+  // Recarregar produtos quando a tela voltar ao foco (após cadastrar/editar)
+  useFocusEffect(
+    useCallback(() => {
+      fetchProducts();
+    }, [])
+  );
+  
   // Filtrar produtos quando o texto de busca mudar
   useEffect(() => {
     if (searchText.trim() === '') {
@@ -83,23 +94,83 @@ export default function ProductList() {
     router.push(`/product/${productId}`);
   };
   
+  // Excluir produto
+  const handleDeleteProduct = (product: Product) => {
+    Alert.alert(
+      'Excluir Produto',
+      `Tem certeza que deseja excluir "${product.name}"? Esta ação não pode ser desfeita.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingProducts(prev => new Set(prev).add(product.id));
+              
+              const { error } = await ProductService.deleteSpecificProduct(product.id);
+              
+              if (error) {
+                console.error('Erro ao excluir produto:', error);
+                Alert.alert('Erro', 'Não foi possível excluir o produto');
+              } else {
+                showSuccess('Produto excluído com sucesso!');
+                // Remover o produto da lista local
+                setProducts(prev => prev.filter(p => p.id !== product.id));
+                setFilteredProducts(prev => prev.filter(p => p.id !== product.id));
+              }
+            } catch (error) {
+              console.error('Erro ao excluir produto:', error);
+              Alert.alert('Erro', 'Ocorreu um erro ao excluir o produto');
+            } finally {
+              setDeletingProducts(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(product.id);
+                return newSet;
+              });
+            }
+          },
+        },
+      ]
+    );
+  };
+  
   // Renderizar cada item da lista
-  const renderProductItem = ({ item }: { item: Product }) => (
-    <TouchableOpacity 
-      style={styles.productItem}
-      onPress={() => handleProductPress(item.id)}
-    >
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        {item.description && (
-          <Text style={styles.productDescription} numberOfLines={1}>
-            {item.description}
-          </Text>
-        )}
+  const renderProductItem = ({ item }: { item: Product }) => {
+    const isDeleting = deletingProducts.has(item.id);
+    
+    return (
+      <View style={styles.productItem}>
+        <TouchableOpacity 
+          style={styles.productContent}
+          onPress={() => handleProductPress(item.id)}
+          disabled={isDeleting}
+        >
+          <View style={styles.productInfo}>
+            <Text style={styles.productName}>{item.name}</Text>
+            {item.description && (
+              <Text style={styles.productDescription} numberOfLines={1}>
+                {item.description}
+              </Text>
+            )}
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#666" />
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
+          onPress={() => handleDeleteProduct(item)}
+          disabled={isDeleting}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#ff6b6b" />
+          ) : (
+            <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
+          )}
+        </TouchableOpacity>
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#666" />
-    </TouchableOpacity>
-  );
+    );
+  };
   
   return (
     <SafeContainer style={styles.container}>
@@ -163,6 +234,13 @@ export default function ProductList() {
           }
         />
       )}
+      
+      <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={hideToast}
+      />
     </SafeContainer>
   );
 }
@@ -229,13 +307,19 @@ const styles = StyleSheet.create({
   productItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: '#f9f9f9',
-    padding: 16,
     borderRadius: 8,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    overflow: 'hidden',
+  },
+  productContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
   },
   productInfo: {
     flex: 1,
@@ -249,6 +333,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+  },
+  deleteButton: {
+    padding: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderLeftWidth: 1,
+    borderLeftColor: '#e0e0e0',
+  },
+  deleteButtonDisabled: {
+    opacity: 0.5,
   },
   emptyContainer: {
     alignItems: 'center',

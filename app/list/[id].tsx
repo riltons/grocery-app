@@ -332,6 +332,7 @@ export default function ListDetail() {
         generic_product_id: genericProduct.id,
         name: productName,
         brand: '',
+        default_unit: unit, // Usa a unidade selecionada pelo usuário
         user_id: user.user.id,
       });
 
