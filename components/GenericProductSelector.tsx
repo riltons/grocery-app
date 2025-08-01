@@ -54,7 +54,6 @@ export default function GenericProductSelector({
   // Load products when modal opens
   useEffect(() => {
     if (visible) {
-      console.log('GenericProductSelector aberto, carregando produtos...');
       fetchProducts();
       setSearchText(searchQuery);
       setShowCreateForm(false);
@@ -79,7 +78,6 @@ export default function GenericProductSelector({
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      console.log('Buscando produtos genéricos no GenericProductSelector...');
       const { data, error } = await ProductService.getGenericProducts();
       
       if (error) {
@@ -89,7 +87,6 @@ export default function GenericProductSelector({
       }
       
       if (data) {
-        console.log(`GenericProductSelector: ${data.length} produtos carregados`);
         setProducts(data);
         setFilteredProducts(data);
       }
@@ -195,6 +192,15 @@ export default function GenericProductSelector({
       <View style={styles.suggestedBadge}>
         <Text style={styles.suggestedBadgeText}>Sugerido</Text>
       </View>
+    </TouchableOpacity>
+  );
+
+  const renderSuggestedBadge = ({ item }: { item: GenericProduct }) => (
+    <TouchableOpacity
+      style={styles.suggestedBadgeItem}
+      onPress={() => handleSelectProduct(item)}
+    >
+      <Text style={styles.suggestedBadgeItemText}>{item.name}</Text>
     </TouchableOpacity>
   );
 
@@ -307,10 +313,12 @@ export default function GenericProductSelector({
                   <View style={styles.suggestedSection}>
                     <Text style={styles.sectionTitle}>Sugestões</Text>
                     <FlatList
-                      data={suggestedProducts}
-                      renderItem={renderSuggestedItem}
+                      data={suggestedProducts.slice(0, 10)} // Limitar a 10 sugestões
+                      renderItem={renderSuggestedBadge}
                       keyExtractor={(item) => item.id}
-                      showsVerticalScrollIndicator={false}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.suggestedBadgesList}
                     />
                   </View>
                 )}
@@ -351,7 +359,8 @@ export default function GenericProductSelector({
                         keyExtractor={(item) => item.id}
                         showsVerticalScrollIndicator={true}
                         style={styles.productsList}
-                        contentContainerStyle={{ paddingBottom: 20 }}
+                        contentContainerStyle={{ paddingBottom: 20, flexGrow: 1 }}
+                        nestedScrollEnabled={true}
                       />
                       
                       {/* Create New Option */}
@@ -450,7 +459,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   suggestedSection: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   allProductsSection: {
     flex: 1,
@@ -496,9 +505,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
   },
+  suggestedBadgesList: {
+    paddingRight: 16,
+    paddingBottom: 8,
+  },
+  suggestedBadgeItem: {
+    backgroundColor: '#e0f2fe',
+    borderWidth: 1,
+    borderColor: '#0ea5e9',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+    maxWidth: 120,
+  },
+  suggestedBadgeItemText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#0369a1',
+    textAlign: 'center',
+  },
   productsList: {
     flex: 1,
-    minHeight: 300,
+    minHeight: 200,
+    maxHeight: 400,
   },
   productItem: {
     flexDirection: 'row',

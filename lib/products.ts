@@ -28,7 +28,6 @@ export const ProductService = {
         throw error;
       }
 
-      console.log(`Produtos genéricos carregados: ${data?.length || 0} produtos`);
       return { data, error: null };
     } catch (error) {
       console.error('Erro ao buscar produtos genéricos:', error);
