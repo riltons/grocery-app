@@ -16,12 +16,15 @@ import { Ionicons } from '@expo/vector-icons';
 import type { SpecificProduct, GenericProduct } from '../lib/supabase';
 import SimpleBarcodeScanner from './SimpleBarcodeScanner';
 import ScanResultModal from './ScanResultModal';
+import GenericProductSelector from './GenericProductSelector';
 import { BarcodeService, ProductInfo, BarcodeResult, GenericProductMatcher, SpecificProductCreationService } from '../lib/barcode';
+import { ProductService } from '../lib/products';
 import { supabase } from '../lib/supabase';
 
 interface AddProductInterfaceProps {
   onAddProduct: (productName: string, quantity: number, unit: string) => Promise<void>;
   onSelectProduct: (product: SpecificProduct, quantity: number, unit: string) => Promise<void>;
+  onSelectGenericProduct: (product: GenericProduct, quantity: number, unit: string) => Promise<void>;
   onCreateNewProduct: (productName: string, quantity: number, unit: string) => Promise<void>;
   suggestions: SpecificProduct[];
   frequentProducts: SpecificProduct[];
@@ -34,6 +37,7 @@ const QUICK_QUANTITIES = [1, 2, 3, 5];
 export default function AddProductInterface({
   onAddProduct,
   onSelectProduct,
+  onSelectGenericProduct,
   onCreateNewProduct,
   suggestions,
   frequentProducts,
@@ -53,6 +57,10 @@ export default function AddProductInterface({
   const [suggestedGenericProducts, setSuggestedGenericProducts] = useState<GenericProduct[]>([]);
   const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
   const [scannerLoading, setScannerLoading] = useState(false);
+  
+  // Generic product selector states
+  const [showGenericSelector, setShowGenericSelector] = useState(false);
+  const [genericProducts, setGenericProducts] = useState<GenericProduct[]>([]);
   
   const slideAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
@@ -336,6 +344,45 @@ export default function AddProductInterface({
     setSelectedGenericProduct(genericProduct);
   };
 
+  // Generic product functions
+  const handleOpenGenericSelector = () => {
+    setShowGenericSelector(true);
+    loadGenericProducts();
+  };
+
+  const handleCloseGenericSelector = () => {
+    setShowGenericSelector(false);
+  };
+
+  const loadGenericProducts = async () => {
+    try {
+      const { data, error } = await ProductService.getGenericProducts();
+      if (error) {
+        console.error('Erro ao carregar produtos genéricos:', error);
+        return;
+      }
+      if (data) {
+        setGenericProducts(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar produtos genéricos:', error);
+    }
+  };
+
+  const handleSelectGenericProduct = async (product: GenericProduct) => {
+    const qty = parseFloat(quantity) || 1;
+    try {
+      await onSelectGenericProduct(product, qty, selectedUnit);
+      setShowGenericSelector(false);
+      setQuantity('1');
+      setSelectedUnit('un');
+      setIsExpanded(false);
+      Keyboard.dismiss();
+    } catch (error) {
+      console.error('Erro ao adicionar produto genérico:', error);
+    }
+  };
+
   const renderSuggestion = ({ item }: { item: SpecificProduct }) => (
     <TouchableOpacity
       style={styles.suggestionItem}
@@ -389,6 +436,14 @@ export default function AddProductInterface({
               onSubmitEditing={handleAddProduct}
             />
             
+            <TouchableOpacity
+              style={styles.genericButton}
+              onPress={handleOpenGenericSelector}
+              disabled={loading}
+            >
+              <Ionicons name="list-outline" size={20} color="#FF9800" />
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.scannerButton}
               onPress={handleOpenScanner}
@@ -543,6 +598,15 @@ export default function AddProductInterface({
         onCancel={handleScanResultCancel}
         loading={scannerLoading}
       />
+
+      {/* Generic Product Selector Modal */}
+      <GenericProductSelector
+        visible={showGenericSelector}
+        onClose={handleCloseGenericSelector}
+        onSelectProduct={handleSelectGenericProduct}
+        suggestedProducts={[]} // TODO: Implementar sugestões baseadas no histórico
+        searchQuery={productName}
+      />
     </View>
   );
 }
@@ -601,6 +665,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
     borderColor: '#e0e0e0',
+  },
+  genericButton: {
+    marginLeft: 8,
+    padding: 8,
+    backgroundColor: '#fff3e0',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FF9800',
   },
   scannerButton: {
     marginLeft: 8,

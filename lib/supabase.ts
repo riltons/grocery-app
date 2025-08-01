@@ -29,10 +29,21 @@ export type User = {
   created_at: string;
 };
 
+export type Category = {
+  id: string;
+  name: string;
+  icon: string;
+  color?: string;
+  description?: string;
+  user_id: string;
+  created_at: string;
+  updated_at?: string;
+};
+
 export type GenericProduct = {
   id: string;
   name: string;
-  category: string | null | undefined;
+  category: string | null | undefined; // UUID referencing categories table
   created_at: string;
   user_id: string;
 };
@@ -87,6 +98,7 @@ export type ListItem = {
   quantity: number;
   unit: string;
   checked: boolean;
+  price?: number; // Price of the item when marked as purchased
   created_at: string;
   updated_at: string;
   user_id: string;

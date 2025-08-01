@@ -7,9 +7,11 @@ import { ListsService } from '../../lib/lists';
 import { ProductService } from '../../lib/products';
 import AddProductInterface from '../../components/AddProductInterface';
 import PriceInputModal from '../../components/PriceInputModal';
+import PriceEditModal from '../../components/PriceEditModal';
+import ProductSubstitutionModal from '../../components/ProductSubstitutionModal';
 import SafeContainer from '../../components/SafeContainer';
 import { supabase } from '../../lib/supabase';
-import type { SpecificProduct } from '../../lib/supabase';
+import type { SpecificProduct, GenericProduct } from '../../lib/supabase';
 
 // Tipos para a lista e seus itens
 type List = {
@@ -26,6 +28,7 @@ type ListItem = {
   product_name: string;
   product_brand?: string;
   product_id?: string;
+  generic_product_id?: string;
   generic_product_name?: string;
   category?: string;
   quantity: number;
@@ -33,6 +36,7 @@ type ListItem = {
   checked: boolean;
   price?: number;
   created_at: string;
+  is_generic?: boolean; // Indica se o item é um produto genérico
 };
 
 export default function ListDetail() {
@@ -48,7 +52,10 @@ export default function ListDetail() {
   const [suggestions, setSuggestions] = useState<SpecificProduct[]>([]);
   const [frequentProducts, setFrequentProducts] = useState<SpecificProduct[]>([]);
   const [priceModalVisible, setPriceModalVisible] = useState(false);
+  const [priceEditModalVisible, setPriceEditModalVisible] = useState(false);
+  const [substitutionModalVisible, setSubstitutionModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ListItem | null>(null);
+  const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
   const router = useRouter();
 
   // Função para buscar detalhes da lista
@@ -113,6 +120,8 @@ export default function ListDetail() {
   // Reorganizar itens quando a lista mudar
   useEffect(() => {
     organizeItems(items);
+    // Atualizar produtos frequentes quando a lista de itens mudar
+    loadFrequentProducts();
   }, [items]);
 
   // Carregar sugestões de produtos
@@ -130,9 +139,18 @@ export default function ListDetail() {
   // Carregar produtos mais usados
   const loadFrequentProducts = async () => {
     try {
-      const { data } = await ProductService.getMostUsedProducts(5);
+      const { data } = await ProductService.getMostUsedProducts(10); // Busca mais para filtrar
       if (data) {
-        setFrequentProducts(data);
+        // Filtrar produtos que já estão na lista atual
+        const currentProductIds = items
+          .filter(item => item.product_id)
+          .map(item => item.product_id);
+        
+        const filteredProducts = data
+          .filter(product => !currentProductIds.includes(product.id))
+          .slice(0, 5); // Limita a 5 produtos após filtrar
+        
+        setFrequentProducts(filteredProducts);
       }
     } catch (error) {
       console.error('Erro ao carregar produtos frequentes:', error);
@@ -173,7 +191,6 @@ export default function ListDetail() {
       
       // Atualizar no banco
       const { error } = await ListsService.updateListItem(id, existingItem.id, {
-        ...existingItem,
         quantity: newQuantity
       });
       
@@ -243,6 +260,60 @@ export default function ListDetail() {
     }
   };
 
+  // Função para selecionar um produto genérico
+  const handleSelectGenericProduct = async (product: GenericProduct, quantity: number, unit: string) => {
+    try {
+      // Verificar se produto já existe
+      if (checkDuplicateProduct(product.name)) {
+        Alert.alert(
+          'Produto já existe',
+          `"${product.name}" já está na sua lista. Deseja aumentar a quantidade?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Aumentar Quantidade', 
+              onPress: () => increaseProductQuantity(product.name, quantity)
+            }
+          ]
+        );
+        return;
+      }
+
+      setAddingItem(true);
+      const { data, error } = await ListsService.addListItem(id, {
+        product_name: product.name,
+        quantity: quantity,
+        unit: unit,
+        checked: false,
+        generic_product_id: product.id, // Passa o ID do produto genérico
+      });
+
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível adicionar o produto genérico à lista');
+        throw error;
+      } else if (data) {
+        // Adiciona o novo item à lista local com informações genéricas
+        const genericItem = {
+          ...data,
+          product_name: product.name,
+          generic_product_id: product.id,
+          generic_product_name: product.name,
+          category: product.category,
+          is_generic: true,
+        };
+        setItems(prevItems => [...prevItems, genericItem]);
+        
+        // Recarrega produtos frequentes
+        loadFrequentProducts();
+      }
+    } catch (error) {
+      console.error('Erro ao adicionar produto genérico:', error);
+      throw error;
+    } finally {
+      setAddingItem(false);
+    }
+  };
+
   // Função para selecionar um produto existente
   const handleSelectProduct = async (product: SpecificProduct, quantity: number, unit: string) => {
     try {
@@ -277,7 +348,13 @@ export default function ListDetail() {
       } else if (data) {
         // Adiciona o novo item à lista local
         setItems(prevItems => [...prevItems, data]);
-        // Recarrega produtos frequentes
+        
+        // Remove o produto da lista de produtos frequentes localmente
+        setFrequentProducts(prevFrequent => 
+          prevFrequent.filter(fp => fp.id !== product.id)
+        );
+        
+        // Recarrega produtos frequentes para sincronizar com o servidor
         loadFrequentProducts();
       }
     } catch (error) {
@@ -379,15 +456,15 @@ export default function ListDetail() {
       }
 
       // Se está desmarcando, apenas atualizar
-      const updatedItem = { ...item, checked: false, price: undefined };
-      const { error } = await ListsService.updateListItem(id, item.id, updatedItem);
+      const updates = { checked: false, price: null };
+      const { error } = await ListsService.updateListItem(id, item.id, updates);
       
       if (error) {
         Alert.alert('Erro', 'Não foi possível atualizar o item');
       } else {
         // Atualiza o item na lista local
         setItems(prevItems =>
-          prevItems.map(i => (i.id === item.id ? updatedItem : i))
+          prevItems.map(i => (i.id === item.id ? { ...i, ...updates } : i))
         );
       }
     } catch (error) {
@@ -401,13 +478,12 @@ export default function ListDetail() {
     if (!selectedItem) return;
 
     try {
-      const updatedItem = { 
-        ...selectedItem, 
-        checked: true, 
-        price: price > 0 ? price : undefined 
+      const updates = {
+        checked: true,
+        price: price > 0 ? price : null
       };
       
-      const { error } = await ListsService.updateListItem(id, selectedItem.id, updatedItem);
+      const { error } = await ListsService.updateListItem(id, selectedItem.id, updates);
       
       if (error) {
         Alert.alert('Erro', 'Não foi possível atualizar o item');
@@ -415,11 +491,136 @@ export default function ListDetail() {
       } else {
         // Atualiza o item na lista local
         setItems(prevItems =>
-          prevItems.map(i => (i.id === selectedItem.id ? updatedItem : i))
+          prevItems.map(i => (i.id === selectedItem.id ? { ...i, ...updates } : i))
         );
       }
     } catch (error) {
       console.error('Erro ao confirmar compra:', error);
+      throw error;
+    }
+  };
+
+  // Função para editar preço de item comprado
+  const handleEditPrice = (item: ListItem) => {
+    setSelectedItem(item);
+    setPriceEditModalVisible(true);
+  };
+
+  // Função para abrir modal de substituição de produto
+  const handleSubstituteProduct = async (item: ListItem) => {
+    if (!item.generic_product_id) {
+      Alert.alert('Erro', 'Este item não possui um produto genérico associado');
+      return;
+    }
+
+    try {
+      // Buscar o produto genérico
+      const { data: genericProduct, error } = await ProductService.getGenericProductById(item.generic_product_id);
+      
+      if (error || !genericProduct) {
+        Alert.alert('Erro', 'Não foi possível carregar o produto genérico');
+        return;
+      }
+
+      setSelectedItem(item);
+      setSelectedGenericProduct(genericProduct);
+      setSubstitutionModalVisible(true);
+    } catch (error) {
+      console.error('Erro ao buscar produto genérico:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao carregar o produto genérico');
+    }
+  };
+
+  // Função para confirmar substituição de produto
+  const handleConfirmSubstitution = async (specificProduct: SpecificProduct) => {
+    if (!selectedItem) return;
+
+    try {
+      setAddingItem(true);
+
+      // Primeiro, remover a relação atual (se existir)
+      if (selectedItem.product_id) {
+        const { error: deleteError } = await supabase
+          .from('list_item_products')
+          .delete()
+          .eq('list_item_id', selectedItem.id);
+
+        if (deleteError) {
+          console.error('Erro ao remover relação anterior:', deleteError);
+        }
+      }
+
+      // Criar nova relação com o produto específico
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Erro', 'Usuário não autenticado');
+        return;
+      }
+
+      const { error: insertError } = await supabase
+        .from('list_item_products')
+        .insert([
+          {
+            list_item_id: selectedItem.id,
+            specific_product_id: specificProduct.id,
+            user_id: user.id,
+          }
+        ]);
+
+      if (insertError) {
+        Alert.alert('Erro', 'Não foi possível substituir o produto');
+        throw insertError;
+      }
+
+      // Atualizar o item na lista local
+      setItems(prevItems =>
+        prevItems.map(item =>
+          item.id === selectedItem.id
+            ? {
+                ...item,
+                product_name: specificProduct.name,
+                product_brand: specificProduct.brand || '',
+                product_id: specificProduct.id,
+                is_generic: false,
+              }
+            : item
+        )
+      );
+
+      // Fechar modal
+      setSubstitutionModalVisible(false);
+      setSelectedItem(null);
+      setSelectedGenericProduct(null);
+
+      Alert.alert('Sucesso', `Produto substituído por "${specificProduct.name}"`);
+    } catch (error) {
+      console.error('Erro ao substituir produto:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao substituir o produto');
+    } finally {
+      setAddingItem(false);
+    }
+  };
+
+  // Função para confirmar edição de preço
+  const handleConfirmPriceEdit = async (price: number | null) => {
+    if (!selectedItem) return;
+
+    try {
+      const updates = { price };
+      
+      const { error } = await ListsService.updateListItem(id, selectedItem.id, updates);
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar o preço');
+        throw error;
+      } else {
+        // Atualiza o item na lista local
+        setItems(prevItems =>
+          prevItems.map(i => (i.id === selectedItem.id ? { ...i, ...updates } : i))
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao editar preço:', error);
       throw error;
     }
   };
@@ -456,11 +657,18 @@ export default function ListDetail() {
       </TouchableOpacity>
       
       <View style={styles.itemInfo}>
-        <Text 
-          style={[styles.itemName, item.checked && styles.itemNameChecked]}
-        >
-          {item.product_name}
-        </Text>
+        <View style={styles.itemNameContainer}>
+          <Text 
+            style={[styles.itemName, item.checked && styles.itemNameChecked]}
+          >
+            {item.product_name}
+          </Text>
+          {item.is_generic && (
+            <View style={styles.genericBadge}>
+              <Text style={styles.genericBadgeText}>Genérico</Text>
+            </View>
+          )}
+        </View>
         {item.product_brand && (
           <Text style={[styles.itemBrand, item.checked && styles.itemBrandChecked]}>
             {item.product_brand}
@@ -476,17 +684,27 @@ export default function ListDetail() {
             </Text>
           )}
           {item.price && item.checked && (
-            <Text style={styles.itemPrice}>
-              • {(item.price * item.quantity).toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: 'BRL'
-              })}
-            </Text>
+            <TouchableOpacity onPress={() => handleEditPrice(item)}>
+              <Text style={styles.itemPrice}>
+                • {(item.price * item.quantity).toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL'
+                })}
+              </Text>
+            </TouchableOpacity>
           )}
         </View>
       </View>
       
       <View style={styles.itemActions}>
+        {item.is_generic && item.generic_product_id && (
+          <TouchableOpacity 
+            style={styles.substituteButton}
+            onPress={() => handleSubstituteProduct(item)}
+          >
+            <Ionicons name="swap-horizontal" size={20} color="#FF9800" />
+          </TouchableOpacity>
+        )}
         {item.product_id && (
           <TouchableOpacity 
             style={styles.productButton}
@@ -535,6 +753,7 @@ export default function ListDetail() {
       <AddProductInterface
         onAddProduct={handleAddProduct}
         onSelectProduct={handleSelectProduct}
+        onSelectGenericProduct={handleSelectGenericProduct}
         onCreateNewProduct={handleCreateNewProduct}
         suggestions={suggestions}
         frequentProducts={frequentProducts}
@@ -552,6 +771,32 @@ export default function ListDetail() {
         quantity={selectedItem?.quantity || 0}
         unit={selectedItem?.unit || ''}
         loading={addingItem}
+      />
+
+      <PriceEditModal
+        visible={priceEditModalVisible}
+        onClose={() => {
+          setPriceEditModalVisible(false);
+          setSelectedItem(null);
+        }}
+        onConfirm={handleConfirmPriceEdit}
+        productName={selectedItem?.product_name || ''}
+        currentPrice={selectedItem?.price}
+        quantity={selectedItem?.quantity || 0}
+        unit={selectedItem?.unit || ''}
+        loading={addingItem}
+      />
+
+      <ProductSubstitutionModal
+        visible={substitutionModalVisible}
+        onClose={() => {
+          setSubstitutionModalVisible(false);
+          setSelectedItem(null);
+          setSelectedGenericProduct(null);
+        }}
+        onSubstitute={handleConfirmSubstitution}
+        genericProduct={selectedGenericProduct}
+        currentProductName={selectedItem?.product_name || ''}
       />
 
       {items.length === 0 ? (
@@ -688,11 +933,28 @@ const styles = StyleSheet.create({
   itemInfo: {
     flex: 1,
   },
+  itemNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
   itemName: {
     fontSize: 16,
     fontWeight: '500',
-    marginBottom: 2,
     color: '#333',
+    flex: 1,
+  },
+  genericBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  genericBadgeText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '600',
   },
   itemNameChecked: {
     textDecorationLine: 'line-through',
@@ -741,6 +1003,10 @@ const styles = StyleSheet.create({
   itemActions: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  substituteButton: {
+    padding: 8,
+    marginRight: 4,
   },
   productButton: {
     padding: 8,

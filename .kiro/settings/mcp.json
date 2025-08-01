@@ -15,7 +15,8 @@
         "search_docs",
         "list_projects",
         "apply_migration",
-        "list_tables"
+        "list_tables",
+        "execute_sql"
       ]
     }
   }

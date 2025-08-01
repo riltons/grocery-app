@@ -158,7 +158,7 @@ export const ListsService = {
         throw new Error('Usuário não autenticado');
       }
 
-      // Busca itens com produtos associados
+      // Busca itens com produtos associados e produtos genéricos
       const { data: itemsWithProducts, error: error1 } = await supabase
         .from('list_items')
         .select(`
@@ -170,10 +170,16 @@ export const ListsService = {
               brand,
               generic_product_id,
               generic_products (
+                id,
                 name,
                 category
               )
             )
+          ),
+          generic_products (
+            id,
+            name,
+            category
           )
         `)
         .eq('list_id', listId)
@@ -183,17 +189,53 @@ export const ListsService = {
       if (error1) throw error1;
 
       // Processar os dados para incluir informações do produto
-      const processedData = itemsWithProducts?.map(item => {
+      const processedData = itemsWithProducts?.map((item) => {
         const productInfo = item.list_item_products?.[0]?.specific_products;
+        const genericInfo = item.generic_products;
+        const hasSpecificProduct = !!productInfo;
+        const hasGenericProduct = !!genericInfo || !!item.generic_product_id;
+        
+        // Se tem produto específico, usar suas informações
+        if (hasSpecificProduct) {
+          return {
+            ...item,
+            product_name: productInfo.name,
+            product_brand: productInfo.brand || '',
+            product_id: productInfo.id,
+            generic_product_id: productInfo.generic_product_id,
+            generic_product_name: productInfo.generic_products?.name || '',
+            category: productInfo.generic_products?.category || '',
+            is_generic: false,
+          };
+        }
+        
+        // Se tem produto genérico (direto ou por referência)
+        if (hasGenericProduct) {
+          const genericProduct = genericInfo || { name: item.product_name, category: null };
+          return {
+            ...item,
+            product_name: item.product_name || genericProduct.name,
+            product_brand: '',
+            product_id: null,
+            generic_product_id: item.generic_product_id || genericInfo?.id,
+            generic_product_name: genericProduct.name,
+            category: genericProduct.category || '',
+            is_generic: true,
+          };
+        }
+        
+        // Fallback: item sem produto associado (produto manual)
         return {
           ...item,
-          product_name: productInfo?.name || 'Produto desconhecido',
-          product_brand: productInfo?.brand || '',
-          product_id: productInfo?.id || null,
-          generic_product_name: productInfo?.generic_products?.name || '',
-          category: productInfo?.generic_products?.category || '',
+          product_name: item.product_name || 'Produto desconhecido',
+          product_brand: '',
+          product_id: null,
+          generic_product_id: null,
+          generic_product_name: '',
+          category: '',
+          is_generic: false,
         };
-      });
+      }) || [];
 
       return { data: processedData, error: null };
     } catch (error) {
@@ -237,6 +279,7 @@ export const ListsService = {
     unit: string;
     checked: boolean;
     product_id?: string;
+    generic_product_id?: string;
   }) => {
     try {
       // Busca o usuário atual
@@ -257,17 +300,23 @@ export const ListsService = {
       }
 
       // Primeiro, cria o item da lista
+      const listItemInsert: any = {
+        list_id: listId,
+        quantity: item.quantity,
+        unit: item.unit,
+        checked: item.checked,
+        user_id: user.id,
+        product_name: item.product_name, // Armazenar o nome do produto diretamente
+      };
+
+      // Se tem generic_product_id, adicionar ao insert (assumindo que a coluna existe)
+      if (item.generic_product_id) {
+        listItemInsert.generic_product_id = item.generic_product_id;
+      }
+
       const { data: listItemData, error: listItemError } = await supabase
         .from('list_items')
-        .insert([
-          {
-            list_id: listId,
-            quantity: item.quantity,
-            unit: item.unit,
-            checked: item.checked,
-            user_id: user.id,
-          }
-        ])
+        .insert([listItemInsert])
         .select()
         .single();
 
@@ -295,7 +344,9 @@ export const ListsService = {
         data: { 
           ...listItemData, 
           product_name: item.product_name,
-          product_id: productId || null
+          product_id: productId || null,
+          generic_product_id: item.generic_product_id || null,
+          is_generic: !!item.generic_product_id && !productId,
         }, 
         error: null 
       };
@@ -306,9 +357,22 @@ export const ListsService = {
   },
 
   /**
+   * Valida o preço do item
+   */
+  validatePrice: (price: number | null | undefined): boolean => {
+    if (price === null || price === undefined) return true;
+    return typeof price === 'number' && price >= 0 && price <= 999999.99;
+  },
+
+  /**
    * Atualiza um item da lista
    */
-  updateListItem: async (listId: string, itemId: string, updates: any) => {
+  updateListItem: async (listId: string, itemId: string, updates: {
+    quantity?: number;
+    unit?: string;
+    checked?: boolean;
+    price?: number | null;
+  }) => {
     try {
       // Busca o usuário atual
       const { data: { user } } = await supabase.auth.getUser();
@@ -317,14 +381,24 @@ export const ListsService = {
         throw new Error('Usuário não autenticado');
       }
 
+      // Valida o preço se fornecido
+      if (updates.price !== undefined && !ListsService.validatePrice(updates.price)) {
+        throw new Error('Preço inválido. Deve ser um número entre 0 e 999999.99');
+      }
+
+      // Prepara os dados para atualização
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (updates.quantity !== undefined) updateData.quantity = updates.quantity;
+      if (updates.unit !== undefined) updateData.unit = updates.unit;
+      if (updates.checked !== undefined) updateData.checked = updates.checked;
+      if (updates.price !== undefined) updateData.price = updates.price;
+
       const { data, error } = await supabase
         .from('list_items')
-        .update({
-          quantity: updates.quantity,
-          unit: updates.unit,
-          checked: updates.checked,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', itemId)
         .eq('list_id', listId)
         .eq('user_id', user.id)
