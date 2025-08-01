@@ -23,7 +23,12 @@ export const ProductService = {
         .order('is_default', { ascending: false })
         .order('name', { ascending: true }); // Produtos padrão primeiro, depois alfabético
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro ao buscar produtos genéricos:', error);
+        throw error;
+      }
+
+      console.log(`Produtos genéricos carregados: ${data?.length || 0} produtos`);
       return { data, error: null };
     } catch (error) {
       console.error('Erro ao buscar produtos genéricos:', error);

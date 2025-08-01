@@ -383,6 +383,7 @@ export default function AddProductInterface({
 
   // Generic product functions
   const handleOpenGenericSelector = () => {
+    console.log('Abrindo seletor de produtos genéricos...');
     setShowGenericSelector(true);
     loadGenericProducts();
   };
@@ -393,12 +394,14 @@ export default function AddProductInterface({
 
   const loadGenericProducts = async () => {
     try {
+      console.log('Carregando produtos genéricos...');
       const { data, error } = await ProductService.getGenericProducts();
       if (error) {
         console.error('Erro ao carregar produtos genéricos:', error);
         return;
       }
       if (data) {
+        console.log(`${data.length} produtos genéricos carregados:`, data.slice(0, 3));
         setGenericProducts(data);
       }
     } catch (error) {
@@ -718,7 +721,7 @@ export default function AddProductInterface({
         visible={showGenericSelector}
         onClose={handleCloseGenericSelector}
         onSelectProduct={handleSelectGenericProduct}
-        suggestedProducts={[]} // TODO: Implementar sugestões baseadas no histórico
+        suggestedProducts={genericProducts.slice(0, 5)} // Passar produtos carregados como sugestões
         searchQuery={productName}
       />
     </View>

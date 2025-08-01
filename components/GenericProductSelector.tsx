@@ -54,6 +54,7 @@ export default function GenericProductSelector({
   // Load products when modal opens
   useEffect(() => {
     if (visible) {
+      console.log('GenericProductSelector aberto, carregando produtos...');
       fetchProducts();
       setSearchText(searchQuery);
       setShowCreateForm(false);
@@ -78,6 +79,7 @@ export default function GenericProductSelector({
   const fetchProducts = async () => {
     try {
       setLoading(true);
+      console.log('Buscando produtos genéricos no GenericProductSelector...');
       const { data, error } = await ProductService.getGenericProducts();
       
       if (error) {
@@ -87,6 +89,7 @@ export default function GenericProductSelector({
       }
       
       if (data) {
+        console.log(`GenericProductSelector: ${data.length} produtos carregados`);
         setProducts(data);
         setFilteredProducts(data);
       }
@@ -346,8 +349,9 @@ export default function GenericProductSelector({
                         data={filteredProducts}
                         renderItem={renderProductItem}
                         keyExtractor={(item) => item.id}
-                        showsVerticalScrollIndicator={false}
+                        showsVerticalScrollIndicator={true}
                         style={styles.productsList}
+                        contentContainerStyle={{ paddingBottom: 20 }}
                       />
                       
                       {/* Create New Option */}
@@ -378,6 +382,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
+    height: '100%',
   },
   header: {
     flexDirection: 'row',
@@ -493,6 +498,7 @@ const styles = StyleSheet.create({
   },
   productsList: {
     flex: 1,
+    minHeight: 300,
   },
   productItem: {
     flexDirection: 'row',
