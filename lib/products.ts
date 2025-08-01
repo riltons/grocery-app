@@ -20,7 +20,8 @@ export const ProductService = {
         .from('generic_products')
         .select('*')
         .or(`user_id.eq.${user.id},is_default.eq.true`)
-        .order('is_default.desc,name.asc'); // Produtos padrão primeiro, depois alfabético
+        .order('is_default', { ascending: false })
+        .order('name', { ascending: true }); // Produtos padrão primeiro, depois alfabético
 
       if (error) throw error;
       return { data, error: null };

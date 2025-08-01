@@ -362,9 +362,9 @@ export class BarcodeService {
         brand: specificProduct.brand || '',
         category: specificProduct.generic_products?.category || '',
         description: specificProduct.description || '',
-        image_url: specificProduct.image_url || '',
-        data_source: 'local',
-        confidence_score: 1.0, // Máxima confiança para produtos já cadastrados
+        image: specificProduct.image_url || '',
+        source: 'local',
+        confidence: 1.0, // Máxima confiança para produtos já cadastrados
         genericProduct: specificProduct.generic_products ? {
           id: specificProduct.generic_products.id,
           name: specificProduct.generic_products.name,
@@ -378,7 +378,7 @@ export class BarcodeService {
       console.error('Erro ao buscar produto específico existente:', error);
       return { found: false };
     }
-  },
+  }
 
   /**
    * Busca um produto por código de barras localmente
@@ -3020,7 +3020,7 @@ export class SpecificProductCreationService {
       console.error('Erro na vinculação automática:', error);
       return { success: false, confidence: 0, reason: 'Erro interno na vinculação' };
     }
-  },
+  }
 
   /**
    * Valida dados obrigatórios para criação de produto específico

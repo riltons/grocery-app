@@ -49,6 +49,9 @@ export default function AddProductInterface({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<SpecificProduct[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showAllProducts, setShowAllProducts] = useState(false);
+  const [allProducts, setAllProducts] = useState<SpecificProduct[]>([]);
+  const [loadingAllProducts, setLoadingAllProducts] = useState(false);
   
   // Scanner states
   const [showScanner, setShowScanner] = useState(false);
@@ -65,6 +68,25 @@ export default function AddProductInterface({
   const slideAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
 
+  // Carregar todos os produtos cadastrados
+  const loadAllProducts = async () => {
+    try {
+      setLoadingAllProducts(true);
+      const { data, error } = await ProductService.getSpecificProducts();
+      if (error) {
+        console.error('Erro ao carregar produtos:', error);
+        return;
+      }
+      if (data) {
+        setAllProducts(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar produtos:', error);
+    } finally {
+      setLoadingAllProducts(false);
+    }
+  };
+
   // Filtrar sugestões baseado no texto digitado
   useEffect(() => {
     if (productName.length > 1) {
@@ -73,11 +95,17 @@ export default function AddProductInterface({
       );
       setFilteredSuggestions(filtered);
       setShowSuggestions(filtered.length > 0);
+      setShowAllProducts(false); // Esconder lista completa quando há busca
+    } else if (productName.length === 0 && showAllProducts) {
+      // Mostrar todos os produtos quando campo está vazio e foi focado
+      setShowSuggestions(false);
+      setFilteredSuggestions([]);
     } else {
       setShowSuggestions(false);
       setFilteredSuggestions([]);
+      setShowAllProducts(false);
     }
-  }, [productName, suggestions]);
+  }, [productName, suggestions, showAllProducts]);
 
   // Animação para expandir/contrair interface
   useEffect(() => {
@@ -412,6 +440,27 @@ export default function AddProductInterface({
     </TouchableOpacity>
   );
 
+  const renderProductItem = ({ item }: { item: SpecificProduct }) => (
+    <TouchableOpacity
+      style={styles.productItem}
+      onPress={() => handleSuggestionPress(item)}
+    >
+      <View style={styles.productItemInfo}>
+        <Text style={styles.productItemName}>{item.name}</Text>
+        {item.brand && (
+          <Text style={styles.productItemBrand}>{item.brand}</Text>
+        )}
+        {item.barcode && (
+          <View style={styles.productItemBarcodeContainer}>
+            <Ionicons name="barcode-outline" size={12} color="#4CAF50" />
+            <Text style={styles.productItemBarcode}>{item.barcode}</Text>
+          </View>
+        )}
+      </View>
+      <Ionicons name="add-circle-outline" size={20} color="#4CAF50" />
+    </TouchableOpacity>
+  );
+
   return (
     <View style={styles.container}>
       {/* Produtos Frequentes */}
@@ -439,7 +488,19 @@ export default function AddProductInterface({
               placeholder="O que você precisa comprar?"
               value={productName}
               onChangeText={setProductName}
-              onFocus={() => setIsExpanded(true)}
+              onFocus={() => {
+                setIsExpanded(true);
+                if (productName.length === 0) {
+                  loadAllProducts();
+                  setShowAllProducts(true);
+                }
+              }}
+              onBlur={() => {
+                // Delay para permitir que o toque nos itens funcione
+                setTimeout(() => {
+                  setShowAllProducts(false);
+                }, 150);
+              }}
               autoCapitalize="words"
               returnKeyType="done"
               onSubmitEditing={handleAddProduct}
@@ -482,6 +543,50 @@ export default function AddProductInterface({
                 keyExtractor={(item) => item.id}
                 style={styles.suggestionsList}
               />
+            </View>
+          )}
+
+          {/* Lista completa de produtos */}
+          {showAllProducts && productName.length === 0 && (
+            <View style={styles.allProductsContainer}>
+              <View style={styles.allProductsHeader}>
+                <Text style={styles.allProductsTitle}>Produtos cadastrados</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowAllProducts(false)}
+                  style={styles.closeAllProductsButton}
+                >
+                  <Ionicons name="close" size={16} color="#666" />
+                </TouchableOpacity>
+              </View>
+              {loadingAllProducts ? (
+                <View style={styles.loadingAllProductsContainer}>
+                  <ActivityIndicator size="small" color="#4CAF50" />
+                  <Text style={styles.loadingAllProductsText}>Carregando produtos...</Text>
+                </View>
+              ) : allProducts.length === 0 ? (
+                <View style={styles.emptyAllProductsContainer}>
+                  <Ionicons name="cube-outline" size={32} color="#ccc" />
+                  <Text style={styles.emptyAllProductsText}>Nenhum produto cadastrado</Text>
+                  <Text style={styles.emptyAllProductsSubtext}>
+                    Use o scanner ou digite para criar produtos
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <FlatList
+                    data={allProducts.slice(0, 10)} // Limitar a 10 produtos para performance
+                    renderItem={renderProductItem}
+                    keyExtractor={(item) => item.id}
+                    style={styles.allProductsList}
+                    showsVerticalScrollIndicator={false}
+                  />
+                  {allProducts.length > 10 && (
+                    <Text style={styles.moreProductsText}>
+                      E mais {allProducts.length - 10} produtos... Digite para buscar
+                    </Text>
+                  )}
+                </>
+              )}
             </View>
           )}
         </View>
@@ -813,5 +918,100 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
+  },
+  allProductsContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    maxHeight: 300,
+  },
+  allProductsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  allProductsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  closeAllProductsButton: {
+    padding: 4,
+  },
+  allProductsList: {
+    maxHeight: 240,
+  },
+  productItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  productItemInfo: {
+    flex: 1,
+  },
+  productItemName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 2,
+  },
+  productItemBrand: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  productItemBarcodeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  productItemBarcode: {
+    fontSize: 10,
+    color: '#4CAF50',
+    marginLeft: 4,
+    fontFamily: 'monospace',
+  },
+  moreProductsText: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+    paddingVertical: 8,
+    fontStyle: 'italic',
+  },
+  loadingAllProductsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  loadingAllProductsText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  emptyAllProductsContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  emptyAllProductsText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  emptyAllProductsSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+    textAlign: 'center',
   },
 });
