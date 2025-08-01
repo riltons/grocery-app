@@ -184,18 +184,27 @@ export default function AddProductInterface({
       
       setScannedProduct(productInfo);
       
-      // Get suggested generic products
-      const suggestions = await GenericProductMatcher.suggestGenericProducts(
-        productInfo.name, 
-        productInfo.category
-      );
-      // Extract just the GenericProduct objects from the suggestions
-      const genericProducts = suggestions.map(s => s.product);
-      setSuggestedGenericProducts(genericProducts);
+      // Usar vinculação automática melhorada
+      const autoLinkResult = await SpecificProductCreationService.autoLinkToGenericProduct(productInfo);
       
-      // Try to auto-select a generic product
-      if (suggestions.length > 0) {
-        setSelectedGenericProduct(suggestions[0].product);
+      if (autoLinkResult.success && autoLinkResult.genericProduct) {
+        // Vinculação automática bem-sucedida
+        console.log(`Vinculação automática: ${autoLinkResult.reason}`);
+        setSelectedGenericProduct(autoLinkResult.genericProduct);
+        setSuggestedGenericProducts([autoLinkResult.genericProduct]);
+      } else {
+        // Fallback para o método anterior se a vinculação automática falhar
+        console.log(`Vinculação automática falhou: ${autoLinkResult.reason}`);
+        const suggestions = await GenericProductMatcher.suggestGenericProducts(
+          productInfo.name, 
+          productInfo.category
+        );
+        const genericProducts = suggestions.map(s => s.product);
+        setSuggestedGenericProducts(genericProducts);
+        
+        if (suggestions.length > 0) {
+          setSelectedGenericProduct(suggestions[0].product);
+        }
       }
       
       setShowScanResult(true);

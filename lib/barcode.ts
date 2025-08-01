@@ -325,6 +325,62 @@ export class BarcodeService {
   private static readonly FRESH_DATA_HOURS = 6; // Dados considerados frescos por 6 horas
 
   /**
+   * Busca produto específico existente no banco de dados (primeira prioridade)
+   * Esta função verifica se o produto já foi cadastrado pelo usuário
+   */
+  static async searchExistingSpecificProduct(barcode: string): Promise<BarcodeSearchResult> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        return { found: false };
+      }
+
+      // Buscar produto específico por código de barras
+      const { data: specificProduct, error } = await supabase
+        .from('specific_products')
+        .select(`
+          *,
+          generic_products (
+            id,
+            name,
+            category
+          )
+        `)
+        .eq('barcode', barcode)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !specificProduct) {
+        return { found: false };
+      }
+
+      // Converter produto específico para ProductInfo
+      const productInfo: ProductInfo = {
+        barcode: specificProduct.barcode || barcode,
+        name: specificProduct.name,
+        brand: specificProduct.brand || '',
+        category: specificProduct.generic_products?.category || '',
+        description: specificProduct.description || '',
+        image_url: specificProduct.image_url || '',
+        data_source: 'local',
+        confidence_score: 1.0, // Máxima confiança para produtos já cadastrados
+        genericProduct: specificProduct.generic_products ? {
+          id: specificProduct.generic_products.id,
+          name: specificProduct.generic_products.name,
+          category: specificProduct.generic_products.category || ''
+        } : undefined
+      };
+
+      console.log(`Produto específico encontrado no BD: ${specificProduct.name}`);
+      return { found: true, product: productInfo };
+    } catch (error) {
+      console.error('Erro ao buscar produto específico existente:', error);
+      return { found: false };
+    }
+  },
+
+  /**
    * Busca um produto por código de barras localmente
    * Verifica primeiro o cache, depois a tabela de produtos específicos
    */
@@ -625,16 +681,23 @@ export class BarcodeService {
 
   /**
    * Busca produto com estratégia de fallback entre APIs
-   * Ordem: Local → Cosmos → Open Food Facts
+   * Ordem: BD Específicos → Cache Local → Cosmos → Open Food Facts
    */
   static async searchWithFallback(barcode: string): Promise<BarcodeSearchResult> {
     try {
       console.log(`Iniciando busca com fallback para código: ${barcode}`);
 
-      // 1. Busca local primeiro (mais rápido)
+      // 1. PRIMEIRO: Verificar se já existe produto específico no BD
+      const existingProduct = await this.searchExistingSpecificProduct(barcode);
+      if (existingProduct.found) {
+        console.log('Produto específico encontrado no banco de dados');
+        return existingProduct;
+      }
+
+      // 2. Busca no cache local (mais rápido)
       const localResult = await this.searchLocal(barcode);
       if (localResult.found && this.isDataFresh(localResult.product)) {
-        console.log('Produto encontrado localmente com dados frescos');
+        console.log('Produto encontrado no cache local com dados frescos');
         return localResult;
       }
 
@@ -2862,6 +2925,103 @@ export class GenericProductSuggestionService {
  */
 export class SpecificProductCreationService {
   
+  /**
+   * Vincula automaticamente produto escaneado a produto genérico
+   * Busca o melhor produto genérico baseado no nome e categoria
+   */
+  static async autoLinkToGenericProduct(productInfo: ProductInfo): Promise<{
+    success: boolean;
+    genericProduct?: GenericProduct;
+    confidence: number;
+    reason: string;
+  }> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return { success: false, confidence: 0, reason: 'Usuário não autenticado' };
+      }
+
+      // Buscar produtos genéricos do usuário + padrão
+      const { data: genericProducts, error } = await supabase
+        .from('generic_products')
+        .select('*')
+        .or(`user_id.eq.${user.id},is_default.eq.true`)
+        .order('is_default.desc,name.asc');
+
+      if (error || !genericProducts || genericProducts.length === 0) {
+        return { success: false, confidence: 0, reason: 'Nenhum produto genérico disponível' };
+      }
+
+      // Algoritmo de matching por similaridade
+      let bestMatch: GenericProduct | null = null;
+      let bestScore = 0;
+      let matchReason = '';
+
+      for (const generic of genericProducts) {
+        let score = 0;
+        let reasons: string[] = [];
+
+        // 1. Matching exato por nome (peso 100)
+        if (productInfo.name.toLowerCase().includes(generic.name.toLowerCase()) ||
+            generic.name.toLowerCase().includes(productInfo.name.toLowerCase())) {
+          score += 100;
+          reasons.push('nome similar');
+        }
+
+        // 2. Matching por categoria (peso 50)
+        if (productInfo.category && generic.category &&
+            productInfo.category.toLowerCase() === generic.category.toLowerCase()) {
+          score += 50;
+          reasons.push('categoria igual');
+        }
+
+        // 3. Matching por palavras-chave (peso 30)
+        const productWords = productInfo.name.toLowerCase().split(/\s+/);
+        const genericWords = generic.name.toLowerCase().split(/\s+/);
+        const commonWords = productWords.filter(word => 
+          word.length > 2 && genericWords.some(gw => gw.includes(word) || word.includes(gw))
+        );
+        if (commonWords.length > 0) {
+          score += commonWords.length * 30;
+          reasons.push(`palavras comuns: ${commonWords.join(', ')}`);
+        }
+
+        // 4. Bonus para produtos padrão (peso 10)
+        if (generic.is_default) {
+          score += 10;
+          reasons.push('produto padrão');
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = generic;
+          matchReason = reasons.join(', ');
+        }
+      }
+
+      // Definir threshold mínimo para considerar um match válido
+      const minThreshold = 50;
+      if (bestScore >= minThreshold && bestMatch) {
+        return {
+          success: true,
+          genericProduct: bestMatch,
+          confidence: Math.min(bestScore / 100, 1.0),
+          reason: `Vinculado a "${bestMatch.name}" (${matchReason})`
+        };
+      }
+
+      // Se não encontrou match, sugerir criação de novo genérico
+      return {
+        success: false,
+        confidence: 0,
+        reason: `Nenhum produto genérico compatível encontrado (melhor score: ${bestScore})`
+      };
+    } catch (error) {
+      console.error('Erro na vinculação automática:', error);
+      return { success: false, confidence: 0, reason: 'Erro interno na vinculação' };
+    }
+  },
+
   /**
    * Valida dados obrigatórios para criação de produto específico
    */

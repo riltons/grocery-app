@@ -6,14 +6,21 @@ import { GenericProduct, SpecificProduct } from './supabase';
  */
 export const ProductService = {
   /**
-   * Busca todos os produtos genéricos do usuário
+   * Busca todos os produtos genéricos do usuário (incluindo produtos padrão)
    */
   getGenericProducts: async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
       const { data, error } = await supabase
         .from('generic_products')
         .select('*')
-        .order('name');
+        .or(`user_id.eq.${user.id},is_default.eq.true`)
+        .order('is_default.desc,name.asc'); // Produtos padrão primeiro, depois alfabético
 
       if (error) throw error;
       return { data, error: null };
