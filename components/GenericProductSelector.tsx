@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,22 +12,29 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductService } from '../lib/products';
+import { CategoryService, Category } from '../lib/categories';
 import { GenericProduct, supabase } from '../lib/supabase';
 
 interface GenericProductSelectorProps {
   visible: boolean;
   onClose: () => void;
   onSelectProduct: (product: GenericProduct) => void;
+  onSelectMultipleProducts?: (products: GenericProduct[]) => void;
   suggestedProducts?: GenericProduct[];
   searchQuery?: string;
+  allowMultipleSelection?: boolean;
+  currentListProductNames?: string[]; // Nomes dos produtos já na lista atual
 }
 
 export default function GenericProductSelector({
   visible,
   onClose,
   onSelectProduct,
+  onSelectMultipleProducts,
   suggestedProducts = [],
   searchQuery = '',
+  allowMultipleSelection = false,
+  currentListProductNames = [],
 }: GenericProductSelectorProps) {
   const [products, setProducts] = useState<GenericProduct[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<GenericProduct[]>([]);
@@ -37,30 +44,87 @@ export default function GenericProductSelector({
   const [newProductName, setNewProductName] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
-  // Categories for new products
-  const categories = [
-    'Alimentos',
-    'Bebidas',
-    'Higiene',
-    'Limpeza',
-    'Medicamentos',
-    'Cosméticos',
-    'Casa',
-    'Eletrônicos',
-    'Outros',
-  ];
+  // Memoizar a string da lista para evitar re-renders desnecessários
+  const currentListProductNamesString = useMemo(() => 
+    currentListProductNames.join(','), [currentListProductNames]
+  );
+
+  // Função para carregar categorias
+  const loadCategories = async () => {
+    try {
+      setLoadingCategories(true);
+      const { data, error } = await CategoryService.getCategories();
+      
+      if (error) {
+        console.error('Erro ao carregar categorias:', error);
+        return;
+      }
+      
+      if (data) {
+        setCategories(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar categorias:', error);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
 
   // Load products when modal opens
   useEffect(() => {
     if (visible) {
       fetchProducts();
+      loadCategories(); // Carregar categorias também
       setSearchText(searchQuery);
       setShowCreateForm(false);
       setNewProductName('');
       setNewProductCategory('');
+      setSelectedProducts(new Set());
+      setIsMultiSelectMode(allowMultipleSelection);
+      
+      // Se está em modo múltiplo e há produtos na lista atual, ativar automaticamente
+      if (allowMultipleSelection && currentListProductNames.length > 0) {
+        setIsMultiSelectMode(true);
+      }
     }
-  }, [visible, searchQuery]);
+  }, [visible, searchQuery, allowMultipleSelection, currentListProductNamesString]);
+
+  // Recarregar produtos quando a lista atual mudar
+  useEffect(() => {
+    if (visible) {
+      console.log('🔄 GENERIC SELECTOR - Lista atual mudou, recarregando...');
+      fetchProducts();
+    }
+  }, [currentListProductNamesString, visible]);
+
+  // Atualizar seleção quando a lista de produtos atuais mudar (mesmo com modal aberto)
+  useEffect(() => {
+    if (visible && allowMultipleSelection && products.length > 0) {
+      // Manter produtos da lista atual sempre selecionados
+      setSelectedProducts(prevSelected => {
+        const newSelected = new Set(prevSelected);
+        
+        // Adicionar produtos por nome (produtos genéricos já na lista)
+        products.forEach(product => {
+          if (currentListProductNames.includes(product.name)) {
+            newSelected.add(product.id);
+          }
+        });
+        
+        return newSelected;
+      });
+      
+      // Se há produtos na lista, ativar modo múltiplo automaticamente
+      if (currentListProductNames.length > 0) {
+        setIsMultiSelectMode(true);
+      }
+    }
+  }, [currentListProductNamesString, visible, allowMultipleSelection, products]);
 
   // Filter products when search text changes
   useEffect(() => {
@@ -78,6 +142,9 @@ export default function GenericProductSelector({
   const fetchProducts = async () => {
     try {
       setLoading(true);
+      console.log('🆕 GENERIC SELECTOR - Carregando produtos genéricos...');
+      console.log('  Produtos na lista atual:', currentListProductNames);
+      
       const { data, error } = await ProductService.getGenericProducts();
       
       if (error) {
@@ -87,8 +154,25 @@ export default function GenericProductSelector({
       }
       
       if (data) {
-        setProducts(data);
-        setFilteredProducts(data);
+        console.log(`📦 Total de produtos genéricos no banco: ${data.length}`);
+        
+        // Filtrar produtos que NÃO estão na lista atual
+        const availableProducts = data.filter(product => {
+          const productName = product.name.toLowerCase().trim();
+          const isInList = currentListProductNames.some(listName => 
+            listName.toLowerCase().trim() === productName
+          );
+          
+          console.log(`${isInList ? '❌' : '✅'} ${product.name} - ${isInList ? 'EXCLUÍDO' : 'DISPONÍVEL'}`);
+          
+          return !isInList;
+        });
+        
+        console.log(`✅ Produtos genéricos disponíveis: ${availableProducts.length}`);
+        console.log('Produtos:', availableProducts.map(p => p.name).slice(0, 5));
+        
+        setProducts(availableProducts);
+        setFilteredProducts(availableProducts);
       }
     } catch (error) {
       console.error('Erro ao buscar produtos:', error);
@@ -99,8 +183,66 @@ export default function GenericProductSelector({
   };
 
   const handleSelectProduct = (product: GenericProduct) => {
-    onSelectProduct(product);
-    onClose();
+    if (allowMultipleSelection && isMultiSelectMode) {
+      // Modo de seleção múltipla
+      const newSelected = new Set(selectedProducts);
+      const isInCurrentList = currentListProductNames.includes(product.name);
+      
+      if (newSelected.has(product.id)) {
+        // Se o produto está na lista atual, não permitir desmarcar
+        if (!isInCurrentList) {
+          newSelected.delete(product.id);
+        }
+      } else {
+        newSelected.add(product.id);
+      }
+      setSelectedProducts(newSelected);
+    } else {
+      // Modo de seleção única
+      onSelectProduct(product);
+      onClose();
+    }
+  };
+
+  const handleConfirmMultipleSelection = () => {
+    if (onSelectMultipleProducts) {
+      const selectedProductsList = products.filter(p => selectedProducts.has(p.id));
+      onSelectMultipleProducts(selectedProductsList);
+      onClose();
+    }
+  };
+
+  const handleToggleMultiSelectMode = () => {
+    setIsMultiSelectMode(!isMultiSelectMode);
+    setSelectedProducts(new Set());
+  };
+
+  const handleSelectAll = () => {
+    // Contar apenas produtos que não estão na lista atual para determinar se "todos" estão selecionados
+    const selectableProducts = filteredProducts.filter(p => !currentListProductNames.includes(p.name));
+    const selectableSelected = selectableProducts.filter(p => selectedProducts.has(p.id));
+    
+    if (selectableSelected.length === selectableProducts.length) {
+      // Se todos os produtos selecionáveis estão marcados, desmarcar apenas eles
+      const newSelected = new Set(selectedProducts);
+      selectableProducts.forEach(p => newSelected.delete(p.id));
+      
+      // Manter produtos da lista atual sempre selecionados
+      products.forEach(product => {
+        if (currentListProductNames.includes(product.name)) {
+          newSelected.add(product.id);
+        }
+      });
+      
+      setSelectedProducts(newSelected);
+    } else {
+      // Selecionar todos os produtos filtrados + manter produtos da lista atual
+      const allIds = new Set([
+        ...filteredProducts.map(p => p.id),
+        ...products.filter(p => currentListProductNames.includes(p.name)).map(p => p.id)
+      ]);
+      setSelectedProducts(allIds);
+    }
   };
 
   const handleCreateProduct = async () => {
@@ -163,20 +305,60 @@ export default function GenericProductSelector({
     setNewProductCategory('');
   };
 
-  const renderProductItem = ({ item }: { item: GenericProduct }) => (
-    <TouchableOpacity
-      style={styles.productItem}
-      onPress={() => handleSelectProduct(item)}
-    >
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        {item.category && (
-          <Text style={styles.productCategory}>{item.category}</Text>
+  const renderProductItem = ({ item }: { item: GenericProduct }) => {
+    const isSelected = selectedProducts.has(item.id);
+    const isInCurrentList = currentListProductNames.includes(item.name);
+    
+    return (
+      <TouchableOpacity
+        style={[
+          styles.productItem,
+          isSelected && styles.selectedProductItem,
+          isInCurrentList && styles.inListProductItem
+        ]}
+        onPress={() => handleSelectProduct(item)}
+      >
+        <View style={styles.productInfo}>
+          <View style={styles.productHeader}>
+            <Text style={styles.productName}>{item.name}</Text>
+            {isInCurrentList && (
+              <View style={styles.inListIndicator}>
+                <Ionicons name="checkmark-circle" size={16} color="#FF9800" />
+              </View>
+            )}
+          </View>
+          {item.category && (
+            <Text style={styles.productCategory}>{item.category}</Text>
+          )}
+          {isInCurrentList && (
+            <Text style={styles.inListText}>Já na lista</Text>
+          )}
+        </View>
+        
+        {allowMultipleSelection && isMultiSelectMode ? (
+          <Ionicons 
+            name={
+              isInCurrentList 
+                ? 'checkmark-circle' // Ícone diferente para produtos já na lista (não desmarcável)
+                : isSelected 
+                  ? 'checkbox' 
+                  : 'square-outline'
+            } 
+            size={24} 
+            color={
+              isInCurrentList 
+                ? '#FF9800' // Cor laranja para produtos já na lista
+                : isSelected 
+                  ? '#4CAF50' 
+                  : '#94a3b8'
+            } 
+          />
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
         )}
-      </View>
-      <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const renderSuggestedItem = ({ item }: { item: GenericProduct }) => (
     <TouchableOpacity
@@ -204,19 +386,19 @@ export default function GenericProductSelector({
     </TouchableOpacity>
   );
 
-  const renderCategoryItem = ({ item }: { item: string }) => (
+  const renderCategoryItem = ({ item }: { item: Category }) => (
     <TouchableOpacity
       style={[
         styles.categoryItem,
-        newProductCategory === item && styles.categoryItemSelected
+        newProductCategory === item.name && styles.categoryItemSelected
       ]}
-      onPress={() => setNewProductCategory(item)}
+      onPress={() => setNewProductCategory(item.name)}
     >
       <Text style={[
         styles.categoryText,
-        newProductCategory === item && styles.categoryTextSelected
+        newProductCategory === item.name && styles.categoryTextSelected
       ]}>
-        {item}
+        {item.name}
       </Text>
     </TouchableOpacity>
   );
@@ -235,13 +417,29 @@ export default function GenericProductSelector({
             <Text style={styles.cancelButton}>Cancelar</Text>
           </TouchableOpacity>
           <Text style={styles.title}>
-            {showCreateForm ? 'Novo Produto' : 'Selecionar Produto'}
+            {showCreateForm 
+              ? 'Novo Produto' 
+              : isMultiSelectMode 
+                ? `Selecionados (${selectedProducts.size})` 
+                : 'Selecionar Produto'
+            }
           </Text>
           {showCreateForm ? (
             <TouchableOpacity onPress={handleCreateProduct} disabled={creating}>
               <Text style={[styles.saveButton, creating && styles.disabledButton]}>
                 {creating ? 'Criando...' : 'Criar'}
               </Text>
+            </TouchableOpacity>
+          ) : allowMultipleSelection ? (
+            <TouchableOpacity 
+              onPress={handleToggleMultiSelectMode}
+              style={styles.multiSelectButton}
+            >
+              <Ionicons 
+                name={isMultiSelectMode ? 'checkmark-done' : 'checkbox-outline'} 
+                size={20} 
+                color="#4CAF50" 
+              />
             </TouchableOpacity>
           ) : (
             <View style={styles.headerSpacer} />
@@ -267,7 +465,7 @@ export default function GenericProductSelector({
               <FlatList
                 data={categories}
                 renderItem={renderCategoryItem}
-                keyExtractor={(item) => item}
+                keyExtractor={(item) => item.id}
                 numColumns={2}
                 style={styles.categoriesList}
                 columnWrapperStyle={styles.categoriesRow}
@@ -300,6 +498,41 @@ export default function GenericProductSelector({
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* Controles de seleção múltipla */}
+            {allowMultipleSelection && isMultiSelectMode && filteredProducts.length > 0 && (
+              <View style={styles.multiSelectControls}>
+                <TouchableOpacity
+                  style={styles.selectAllButton}
+                  onPress={handleSelectAll}
+                >
+                  <Ionicons 
+                    name={selectedProducts.size === filteredProducts.length ? 'checkbox' : 'square-outline'} 
+                    size={20} 
+                    color="#4CAF50" 
+                  />
+                  <Text style={styles.selectAllText}>
+                    {(() => {
+                      const selectableProducts = filteredProducts.filter(p => !currentListProductNames.includes(p.name));
+                      const selectableSelected = selectableProducts.filter(p => selectedProducts.has(p.id));
+                      return selectableSelected.length === selectableProducts.length ? 'Desmarcar novos' : 'Selecionar todos';
+                    })()}
+                  </Text>
+                </TouchableOpacity>
+                
+                {selectedProducts.size > 0 && (
+                  <TouchableOpacity
+                    style={styles.confirmSelectionButton}
+                    onPress={handleConfirmMultipleSelection}
+                  >
+                    <Text style={styles.confirmSelectionText}>
+                      Adicionar {selectedProducts.size} produtos
+                    </Text>
+                    <Ionicons name="checkmark" size={20} color="#fff" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
             {loading ? (
               <View style={styles.loadingContainer}>
@@ -672,5 +905,71 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#64748b',
+  },
+  multiSelectButton: {
+    padding: 8,
+  },
+  selectedProductItem: {
+    backgroundColor: '#e8f5e8',
+    borderColor: '#4CAF50',
+    borderWidth: 2,
+  },
+  multiSelectControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    marginBottom: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+  },
+  selectAllText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: '500',
+  },
+  confirmSelectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  confirmSelectionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginRight: 8,
+  },
+  inListProductItem: {
+    backgroundColor: '#fff3e0',
+    borderColor: '#FF9800',
+    borderWidth: 1,
+  },
+  productHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inListIndicator: {
+    backgroundColor: '#fff3e0',
+    borderRadius: 12,
+    padding: 4,
+  },
+  inListText: {
+    fontSize: 11,
+    color: '#FF9800',
+    marginTop: 2,
+    fontWeight: '500',
   },
 });

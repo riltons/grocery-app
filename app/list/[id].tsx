@@ -9,6 +9,7 @@ import AddProductInterface from '../../components/AddProductInterface';
 import PriceInputModal from '../../components/PriceInputModal';
 import PriceEditModal from '../../components/PriceEditModal';
 import ProductSubstitutionModal from '../../components/ProductSubstitutionModal';
+import QuantitySelector from '../../components/QuantitySelector';
 import SafeContainer from '../../components/SafeContainer';
 import { supabase } from '../../lib/supabase';
 import type { SpecificProduct, GenericProduct } from '../../lib/supabase';
@@ -34,7 +35,7 @@ type ListItem = {
   quantity: number;
   unit: string;
   checked: boolean;
-  price?: number;
+  price?: number | null;
   created_at: string;
   is_generic?: boolean; // Indica se o item é um produto genérico
 };
@@ -93,10 +94,60 @@ export default function ListDetail() {
     }
   };
 
+  // Função para ordenar itens por categoria
+  const sortItemsByCategory = (items: ListItem[]) => {
+    return items.sort((a, b) => {
+      // Primeiro, ordena por categoria (alfabeticamente)
+      const categoryA = a.category || 'Sem categoria';
+      const categoryB = b.category || 'Sem categoria';
+      
+      if (categoryA !== categoryB) {
+        return categoryA.localeCompare(categoryB, 'pt-BR');
+      }
+      
+      // Se as categorias são iguais, ordena por nome do produto
+      return a.product_name.localeCompare(b.product_name, 'pt-BR');
+    });
+  };
+
+  // Função para agrupar itens por categoria
+  const groupItemsByCategory = (items: ListItem[]) => {
+    const groups: { [key: string]: ListItem[] } = {};
+    
+    items.forEach(item => {
+      const category = item.category || 'Sem categoria';
+      if (!groups[category]) {
+        groups[category] = [];
+      }
+      groups[category].push(item);
+    });
+    
+    // Retorna as categorias ordenadas alfabeticamente
+    return Object.keys(groups)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .map(category => ({
+        category,
+        items: groups[category].sort((a, b) => 
+          a.product_name.localeCompare(b.product_name, 'pt-BR')
+        )
+      }));
+  };
+
   // Organizar itens por status e calcular total
   const organizeItems = (allItems: ListItem[]) => {
-    const pending = allItems.filter(item => !item.checked);
-    const completed = allItems.filter(item => item.checked);
+    // Primeiro ordena todos os itens por categoria
+    const sortedItems = sortItemsByCategory([...allItems]);
+    
+    // Depois separa por status, mantendo a ordenação
+    const pending = sortedItems.filter(item => !item.checked);
+    const completed = sortedItems.filter(item => item.checked);
+    
+    console.log('📋 LISTA - Organizando itens:');
+    console.log('  Total de itens:', allItems.length);
+    console.log('  Itens pendentes:', pending.length);
+    console.log('  Itens completos:', completed.length);
+    console.log('  IDs dos produtos:', allItems.filter(item => item.product_id).map(item => item.product_id));
+    console.log('  Nomes dos produtos:', allItems.map(item => item.product_name));
     
     setPendingItems(pending);
     setCompletedItems(completed);
@@ -642,6 +693,58 @@ export default function ListDetail() {
     }
   };
 
+  // Função para aumentar quantidade de um item
+  const handleIncreaseQuantity = async (item: ListItem) => {
+    try {
+      const newQuantity = item.quantity + 1;
+      
+      const { error } = await ListsService.updateListItem(id, item.id, {
+        quantity: newQuantity
+      });
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar a quantidade');
+        return;
+      }
+      
+      // Atualizar localmente
+      setItems(prevItems =>
+        prevItems.map(i =>
+          i.id === item.id ? { ...i, quantity: newQuantity } : i
+        )
+      );
+    } catch (error) {
+      console.error('Erro ao aumentar quantidade:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao atualizar a quantidade');
+    }
+  };
+
+  // Função para diminuir quantidade de um item
+  const handleDecreaseQuantity = async (item: ListItem) => {
+    try {
+      const newQuantity = Math.max(1, item.quantity - 1);
+      
+      const { error } = await ListsService.updateListItem(id, item.id, {
+        quantity: newQuantity
+      });
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar a quantidade');
+        return;
+      }
+      
+      // Atualizar localmente
+      setItems(prevItems =>
+        prevItems.map(i =>
+          i.id === item.id ? { ...i, quantity: newQuantity } : i
+        )
+      );
+    } catch (error) {
+      console.error('Erro ao diminuir quantidade:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao atualizar a quantidade');
+    }
+  };
+
   // Renderizar cada item da lista
   const renderItem = ({ item }: { item: ListItem }) => (
     <View style={[styles.itemContainer, item.checked && styles.itemChecked]}>
@@ -675,9 +778,17 @@ export default function ListDetail() {
           </Text>
         )}
         <View style={styles.itemDetails}>
-          <Text style={[styles.itemQuantity, item.checked && styles.itemQuantityChecked]}>
-            {item.quantity} {item.unit}
-          </Text>
+          <View style={styles.quantityContainer}>
+            <QuantitySelector
+              quantity={item.quantity}
+              onIncrease={() => handleIncreaseQuantity(item)}
+              onDecrease={() => handleDecreaseQuantity(item)}
+              disabled={item.checked}
+            />
+            <Text style={[styles.unitText, item.checked && styles.itemQuantityChecked]}>
+              {item.unit}
+            </Text>
+          </View>
           {item.category && (
             <Text style={[styles.itemCategory, item.checked && styles.itemCategoryChecked]}>
               • {item.category}
@@ -758,6 +869,8 @@ export default function ListDetail() {
         suggestions={suggestions}
         frequentProducts={frequentProducts}
         loading={addingItem}
+        currentListProductIds={items.filter(item => item.product_id).map(item => item.product_id!)}
+        currentListProductNames={items.map(item => item.product_name)}
       />
 
       <PriceInputModal
@@ -781,7 +894,7 @@ export default function ListDetail() {
         }}
         onConfirm={handleConfirmPriceEdit}
         productName={selectedItem?.product_name || ''}
-        currentPrice={selectedItem?.price}
+        currentPrice={selectedItem?.price || undefined}
         quantity={selectedItem?.quantity || 0}
         unit={selectedItem?.unit || ''}
         loading={addingItem}
@@ -822,9 +935,14 @@ export default function ListDetail() {
                   <Text style={styles.sectionTitle}>
                     A Comprar ({pendingItems.length})
                   </Text>
-                  {pendingItems.map(item => (
-                    <View key={item.id}>
-                      {renderItem({ item })}
+                  {groupItemsByCategory(pendingItems).map(group => (
+                    <View key={group.category} style={styles.categoryGroup}>
+                      <Text style={styles.categoryTitle}>{group.category}</Text>
+                      {group.items.map(item => (
+                        <View key={item.id}>
+                          {renderItem({ item })}
+                        </View>
+                      ))}
                     </View>
                   ))}
                 </View>
@@ -846,9 +964,14 @@ export default function ListDetail() {
                       </Text>
                     )}
                   </View>
-                  {completedItems.map(item => (
-                    <View key={item.id}>
-                      {renderItem({ item })}
+                  {groupItemsByCategory(completedItems).map(group => (
+                    <View key={group.category} style={styles.categoryGroup}>
+                      <Text style={styles.categoryTitle}>{group.category}</Text>
+                      {group.items.map(item => (
+                        <View key={item.id}>
+                          {renderItem({ item })}
+                        </View>
+                      ))}
                     </View>
                   ))}
                 </View>
@@ -895,6 +1018,18 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 24,
+  },
+  categoryGroup: {
+    marginBottom: 16,
+  },
+  categoryTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginBottom: 8,
+    marginLeft: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   sectionTitle: {
     fontSize: 16,
@@ -969,13 +1104,19 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: '#aaa',
   },
-  itemChecked: {
-    textDecorationLine: 'line-through',
-    color: '#888',
-  },
   itemDetails: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  quantityContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  unitText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
   },
   itemQuantity: {
     fontSize: 14,

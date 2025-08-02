@@ -4,9 +4,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductService } from '../../../lib/products';
+import { CategoryService, Category } from '../../../lib/categories';
 import SafeContainer from '../../../components/SafeContainer';
 import Toast from '../../../components/Toast';
 import { useToast } from '../../../lib/useToast';
+import CategorySelector from '../../../components/CategorySelector';
+import GenericProductSelector from '../../../components/GenericProductSelector';
+import { GenericProduct } from '../../../lib/supabase';
 
 type Product = {
   id: string;
@@ -15,9 +19,16 @@ type Product = {
   default_unit?: string;
   created_at: string;
   generic_product_id: string;
+  barcode?: string;
+  brand?: string;
   generic_products?: {
+    id: string;
     name: string;
-    category: string | null;
+    category_id?: string;
+    category?: {
+      id: string;
+      name: string;
+    };
   };
 };
 
@@ -35,6 +46,16 @@ export default function EditProduct() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [defaultUnit, setDefaultUnit] = useState('');
+  const [brand, setBrand] = useState('');
+  const [barcode, setBarcode] = useState('');
+  
+  // Estados para seletores
+  const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [showGenericProductSelector, setShowGenericProductSelector] = useState(false);
+  
+  // Estado para determinar se é produto específico ou genérico
+  const [isSpecificProduct, setIsSpecificProduct] = useState(true);
   
   // Carregar dados do produto
   useEffect(() => {
@@ -58,6 +79,33 @@ export default function EditProduct() {
           setName(data.name);
           setDescription(data.description || '');
           setDefaultUnit(data.default_unit || '');
+          setBrand(data.brand || '');
+          setBarcode(data.barcode || '');
+          
+          // Determinar se é produto específico (tem generic_product_id) ou genérico
+          setIsSpecificProduct(!!data.generic_product_id);
+          
+          // Se for produto específico, carregar o produto genérico vinculado
+          if (data.generic_product_id && data.generic_products) {
+            setSelectedGenericProduct({
+              id: data.generic_products.id,
+              name: data.generic_products.name,
+              category_id: data.generic_products.category_id,
+              user_id: '', // Será preenchido se necessário
+              created_at: ''
+            });
+            
+            // Se o produto genérico tem categoria, definir como selecionada
+            if (data.generic_products.category) {
+              setSelectedCategory({
+                id: data.generic_products.category.id,
+                name: data.generic_products.category.name,
+                user_id: '',
+                created_at: '',
+                icon: ''
+              });
+            }
+          }
         }
       } catch (error) {
         console.error('Erro ao buscar produto:', error);
@@ -71,8 +119,61 @@ export default function EditProduct() {
     fetchProduct();
   }, [id]);
   
+  // Funções para os seletores
+  const handleGenericProductSelect = (genericProduct: GenericProduct) => {
+    setSelectedGenericProduct(genericProduct);
+    setShowGenericProductSelector(false);
+    
+    // Se o produto genérico tem categoria, atualizar a categoria selecionada
+    if (genericProduct.category_id) {
+      // Buscar dados da categoria
+      CategoryService.getCategories().then(({ data }) => {
+        if (data) {
+          const category = data.find(c => c.id === genericProduct.category_id);
+          if (category) {
+            setSelectedCategory(category);
+          }
+        }
+      });
+    } else {
+      setSelectedCategory(null);
+    }
+  };
+  
+  const handleCategorySelect = async (categoryId: string) => {
+    // Buscar dados completos da categoria
+    try {
+      const { data: categories } = await CategoryService.getCategories();
+      if (categories) {
+        const category = categories.find(c => c.id === categoryId);
+        if (category) {
+          setSelectedCategory(category);
+          
+          // Se há um produto genérico selecionado, atualizar sua categoria
+          if (selectedGenericProduct) {
+            const { error } = await ProductService.updateGenericProduct(selectedGenericProduct.id, {
+              category_id: categoryId
+            });
+            
+            if (error) {
+              console.error('Erro ao atualizar categoria do produto genérico:', error);
+              showError('Erro ao atualizar categoria');
+            } else {
+              // Atualizar o produto genérico local
+              setSelectedGenericProduct(prev => prev ? { ...prev, category_id: categoryId } : null);
+              showSuccess('Categoria atualizada com sucesso!');
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar categoria:', error);
+      showError('Erro ao buscar categoria');
+    }
+  };
+  
   // Validar formulário
-  const isFormValid = name.trim().length > 0;
+  const isFormValid = name.trim().length > 0 && (isSpecificProduct ? selectedGenericProduct : true);
   
   // Salvar alterações
   const handleSave = async () => {
@@ -106,11 +207,22 @@ export default function EditProduct() {
         }
       }
       
-      const updates = {
+      const updates: any = {
         name: newName,
         description: description.trim() || undefined,
         default_unit: defaultUnit.trim() || undefined,
       };
+      
+      // Adicionar campos específicos se for produto específico
+      if (isSpecificProduct) {
+        updates.brand = brand.trim() || undefined;
+        updates.barcode = barcode.trim() || undefined;
+        
+        // Atualizar produto genérico vinculado se mudou
+        if (selectedGenericProduct && selectedGenericProduct.id !== product.generic_product_id) {
+          updates.generic_product_id = selectedGenericProduct.id;
+        }
+      }
       
       const { error } = await ProductService.updateSpecificProduct(product.id, updates);
       
@@ -233,6 +345,15 @@ export default function EditProduct() {
       
       <ScrollView style={styles.content}>
         <View style={styles.form}>
+          {/* Badge indicando tipo do produto */}
+          <View style={styles.typeBadgeContainer}>
+            <View style={[styles.typeBadge, isSpecificProduct ? styles.specificBadge : styles.genericBadge]}>
+              <Text style={styles.typeBadgeText}>
+                {isSpecificProduct ? 'Produto Específico' : 'Produto Genérico'}
+              </Text>
+            </View>
+          </View>
+          
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Nome do Produto *</Text>
             <TextInput
@@ -241,6 +362,56 @@ export default function EditProduct() {
               onChangeText={setName}
               placeholder="Digite o nome do produto"
               autoFocus
+            />
+          </View>
+          
+          {/* Campos específicos para produtos específicos */}
+          {isSpecificProduct && (
+            <>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Marca</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={brand}
+                  onChangeText={setBrand}
+                  placeholder="Digite a marca (opcional)"
+                />
+              </View>
+              
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Código de Barras</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={barcode}
+                  onChangeText={setBarcode}
+                  placeholder="Digite o código de barras (opcional)"
+                  keyboardType="numeric"
+                />
+              </View>
+              
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Produto Genérico Vinculado *</Text>
+                <TouchableOpacity 
+                  style={styles.selectorButton}
+                  onPress={() => setShowGenericProductSelector(true)}
+                >
+                  <Text style={[styles.selectorButtonText, !selectedGenericProduct && styles.placeholderText]}>
+                    {selectedGenericProduct ? selectedGenericProduct.name : 'Selecionar produto genérico'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+          
+          {/* Seletor de categoria (para produtos genéricos ou para atualizar categoria do produto genérico vinculado) */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>
+              Categoria {isSpecificProduct ? '(do produto genérico)' : ''}
+            </Text>
+            <CategorySelector
+              selectedCategory={selectedCategory?.id || null}
+              onSelectCategory={handleCategorySelect}
             />
           </View>
           
@@ -285,6 +456,14 @@ export default function EditProduct() {
         message={toast.message}
         type={toast.type}
         onHide={hideToast}
+      />
+      
+      {/* Modal para seleção de produto genérico */}
+      <GenericProductSelector
+        visible={showGenericProductSelector}
+        onClose={() => setShowGenericProductSelector(false)}
+        onSelectProduct={handleGenericProductSelect}
+        currentListProductNames={[]} // Não precisamos filtrar nada aqui
       />
     </SafeContainer>
   );
@@ -386,5 +565,45 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  // Estilos para o badge de tipo
+  typeBadgeContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  typeBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  specificBadge: {
+    backgroundColor: '#E8F5E8',
+  },
+  genericBadge: {
+    backgroundColor: '#E3F2FD',
+  },
+  typeBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  // Estilos para os seletores
+  selectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: '#fff',
+  },
+  selectorButtonText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  placeholderText: {
+    color: '#999',
   },
 });
