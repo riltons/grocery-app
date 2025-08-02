@@ -43,7 +43,8 @@ export type Category = {
 export type GenericProduct = {
   id: string;
   name: string;
-  category: string | null | undefined; // UUID referencing categories table
+  category_id: string | null; // UUID referencing categories table
+  category?: Category; // Populated when joining with categories table
   created_at: string;
   user_id: string;
 };
@@ -64,6 +65,7 @@ export type SpecificProduct = {
   last_external_sync?: string; // Última sincronização com APIs externas
   created_at: string;
   user_id: string;
+  generic_products?: GenericProduct; // Populated when joining with generic_products table
 };
 
 // Tipo para cache de códigos de barras
@@ -99,6 +101,9 @@ export type ListItem = {
   unit: string;
   checked: boolean;
   price?: number; // Price of the item when marked as purchased
+  product_id?: string; // Referência ao produto específico
+  generic_product_id?: string; // Referência ao produto genérico
+  product_name?: string; // Nome do produto armazenado diretamente
   created_at: string;
   updated_at: string;
   user_id: string;

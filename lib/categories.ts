@@ -227,7 +227,7 @@ export const CategoryService = {
         .from('generic_products')
         .select('id')
         .eq('user_id', user.id)
-        .eq('category', id)
+        .eq('category_id', id)
         .limit(1);
 
       if (checkError) {
@@ -335,7 +335,7 @@ export const CategoryService = {
       // Buscar contagem de produtos por categoria
       const { data, error } = await supabase
         .from('generic_products')
-        .select('category')
+        .select('category_id')
         .eq('user_id', user.id);
 
       if (error) {
@@ -346,8 +346,8 @@ export const CategoryService = {
       // Contar produtos por categoria
       const categoryCount: { [key: string]: number } = {};
       data?.forEach(product => {
-        if (product.category) {
-          categoryCount[product.category] = (categoryCount[product.category] || 0) + 1;
+        if (product.category_id) {
+          categoryCount[product.category_id] = (categoryCount[product.category_id] || 0) + 1;
         }
       });
 

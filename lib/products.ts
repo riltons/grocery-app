@@ -18,7 +18,13 @@ export const ProductService = {
 
       const { data, error } = await supabase
         .from('generic_products')
-        .select('*')
+        .select(`
+          *,
+          categories (
+            id,
+            name
+          )
+        `)
         .or(`user_id.eq.${user.id},is_default.eq.true`)
         .order('is_default', { ascending: false })
         .order('name', { ascending: true }); // Produtos padrão primeiro, depois alfabético
@@ -42,7 +48,13 @@ export const ProductService = {
     try {
       const { data, error } = await supabase
         .from('generic_products')
-        .select('*')
+        .select(`
+          *,
+          categories (
+            id,
+            name
+          )
+        `)
         .eq('id', id)
         .single();
 
@@ -63,7 +75,7 @@ export const ProductService = {
       console.log('ProductService.createGenericProduct - Validação:', {
         name: product.name,
         name_length: product.name?.length,
-        category: product.category,
+        category_id: product.category_id,
         user_id: product.user_id,
         user_id_type: typeof product.user_id,
         user_id_valid: product.user_id && product.user_id.length > 0
@@ -72,7 +84,13 @@ export const ProductService = {
       const { data, error } = await supabase
         .from('generic_products')
         .insert(product)
-        .select()
+        .select(`
+          *,
+          categories (
+            id,
+            name
+          )
+        `)
         .single();
 
       if (error) {
@@ -103,7 +121,13 @@ export const ProductService = {
         .from('generic_products')
         .update(updates)
         .eq('id', id)
-        .select()
+        .select(`
+          *,
+          categories (
+            id,
+            name
+          )
+        `)
         .single();
 
       if (error) throw error;
@@ -145,7 +169,16 @@ export const ProductService = {
 
       const { data, error } = await supabase
         .from('specific_products')
-        .select('*, generic_products(*)')
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name
+            )
+          )
+        `)
         .eq('user_id', user.id)
         .order('name');
 
@@ -170,7 +203,16 @@ export const ProductService = {
 
       const { data, error } = await supabase
         .from('specific_products')
-        .select('*, generic_products(*)')
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name
+            )
+          )
+        `)
         .eq('id', id)
         .eq('user_id', user.id)
         .single();
@@ -210,7 +252,16 @@ export const ProductService = {
       const { data, error } = await supabase
         .from('specific_products')
         .insert(product)
-        .select()
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name
+            )
+          )
+        `)
         .single();
 
       if (error) throw error;
@@ -230,7 +281,16 @@ export const ProductService = {
         .from('specific_products')
         .update(updates)
         .eq('id', id)
-        .select()
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name
+            )
+          )
+        `)
         .single();
 
       if (error) throw error;
@@ -479,7 +539,16 @@ export const ProductService = {
 
       const { data, error } = await supabase
         .from('specific_products')
-        .select('*, generic_products(*)')
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name
+            )
+          )
+        `)
         .eq('barcode', barcode)
         .eq('user_id', user.id)
         .single();
@@ -508,7 +577,16 @@ export const ProductService = {
 
       const { data, error } = await supabase
         .from('specific_products')
-        .select('*, generic_products(*)')
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name
+            )
+          )
+        `)
         .not('barcode', 'is', null)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -534,7 +612,16 @@ export const ProductService = {
 
       const { data, error } = await supabase
         .from('specific_products')
-        .select('*, generic_products(*)')
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name
+            )
+          )
+        `)
         .is('barcode', null)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });

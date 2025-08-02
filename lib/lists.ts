@@ -172,14 +172,20 @@ export const ListsService = {
               generic_products (
                 id,
                 name,
-                category
+                categories (
+                  id,
+                  name
+                )
               )
             )
           ),
           generic_products (
             id,
             name,
-            category
+            categories (
+              id,
+              name
+            )
           )
         `)
         .eq('list_id', listId)
@@ -204,14 +210,14 @@ export const ListsService = {
             product_id: productInfo.id,
             generic_product_id: productInfo.generic_product_id,
             generic_product_name: productInfo.generic_products?.name || '',
-            category: productInfo.generic_products?.category || '',
+            category: productInfo.generic_products?.categories?.name || '',
             is_generic: false,
           };
         }
         
         // Se tem produto genérico (direto ou por referência)
         if (hasGenericProduct) {
-          const genericProduct = genericInfo || { name: item.product_name, category: null };
+          const genericProduct = genericInfo || { name: item.product_name, categories: null };
           return {
             ...item,
             product_name: item.product_name || genericProduct.name,
@@ -219,7 +225,7 @@ export const ListsService = {
             product_id: null,
             generic_product_id: item.generic_product_id || genericInfo?.id,
             generic_product_name: genericProduct.name,
-            category: genericProduct.category || '',
+            category: genericProduct.categories?.name || '',
             is_generic: true,
           };
         }
@@ -308,6 +314,11 @@ export const ListsService = {
         user_id: user.id,
         product_name: item.product_name, // Armazenar o nome do produto diretamente
       };
+
+      // Se tem product_id, adicionar ao insert
+      if (productId) {
+        listItemInsert.product_id = productId;
+      }
 
       // Se tem generic_product_id, adicionar ao insert (assumindo que a coluna existe)
       if (item.generic_product_id) {
