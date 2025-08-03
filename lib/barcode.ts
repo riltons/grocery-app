@@ -319,6 +319,15 @@ export interface BarcodeSearchResult {
 /**
  * Serviço para processamento de códigos de barras
  * Implementa busca local, cache e integração com APIs externas
+ * 
+ * SEQUÊNCIA DE BUSCA OTIMIZADA:
+ * 1. Banco de dados local (produtos específicos já cadastrados)
+ * 2. Cache local (dados recentes de buscas anteriores)
+ * 3. Open Food Facts (API gratuita e ilimitada)
+ * 4. Cosmos API (API limitada - usar apenas quando necessário)
+ * 
+ * Esta sequência prioriza fontes gratuitas antes das limitadas,
+ * otimizando o uso de quotas da API Cosmos.
  */
 export class BarcodeService {
   private static readonly CACHE_TTL_HOURS = 24; // TTL padrão do cache em horas
@@ -344,7 +353,13 @@ export class BarcodeService {
           generic_products (
             id,
             name,
-            category
+            category_id,
+            categories (
+              id,
+              name,
+              icon,
+              color
+            )
           )
         `)
         .eq('barcode', barcode)
@@ -360,7 +375,7 @@ export class BarcodeService {
         barcode: specificProduct.barcode || barcode,
         name: specificProduct.name,
         brand: specificProduct.brand || '',
-        category: specificProduct.generic_products?.category || '',
+        category: specificProduct.generic_products?.categories?.name || '',
         description: specificProduct.description || '',
         image: specificProduct.image_url || '',
         source: 'local',
@@ -368,7 +383,7 @@ export class BarcodeService {
         genericProduct: specificProduct.generic_products ? {
           id: specificProduct.generic_products.id,
           name: specificProduct.generic_products.name,
-          category: specificProduct.generic_products.category || ''
+          category: specificProduct.generic_products.categories?.name || ''
         } : undefined
       };
 
@@ -406,7 +421,13 @@ export class BarcodeService {
           generic_products (
             id,
             name,
-            category
+            category_id,
+            categories (
+              id,
+              name,
+              icon,
+              color
+            )
           )
         `)
         .eq('barcode', barcode)
@@ -423,7 +444,7 @@ export class BarcodeService {
           barcode: product.barcode || barcode,
           name: product.name,
           brand: product.brand,
-          category: product.generic_products?.category,
+          category: product.generic_products?.categories?.name,
           image: product.image_url,
           description: product.description,
           source: (product.data_source as any) || 'local',
@@ -431,7 +452,7 @@ export class BarcodeService {
           genericProduct: product.generic_products ? {
             id: product.generic_products.id,
             name: product.generic_products.name,
-            category: product.generic_products.category || ''
+            category: product.generic_products.categories?.name || ''
           } : undefined,
           metadata: {
             unit: product.default_unit
@@ -681,7 +702,8 @@ export class BarcodeService {
 
   /**
    * Busca produto com estratégia de fallback entre APIs
-   * Ordem: BD Específicos → Cache Local → Cosmos → Open Food Facts
+   * Ordem: BD Específicos → Cache Local → Open Food Facts → Cosmos
+   * Prioriza APIs gratuitas (Open Food Facts) antes das limitadas (Cosmos)
    */
   static async searchWithFallback(barcode: string): Promise<BarcodeSearchResult> {
     try {
@@ -701,9 +723,19 @@ export class BarcodeService {
         return localResult;
       }
 
-      // 2. Busca na API Cosmos (produtos brasileiros)
+      // 3. Busca no Open Food Facts (API gratuita ilimitada)
+      console.log('Buscando no Open Food Facts (API gratuita)...');
+      const openFoodResult = await OpenFoodFactsService.getProduct(barcode);
+      if (openFoodResult) {
+        console.log('Produto encontrado no Open Food Facts');
+        // Fazer cache do resultado
+        await this.cacheProduct(barcode, openFoodResult);
+        return { found: true, product: openFoodResult };
+      }
+
+      // 4. Fallback para API Cosmos (API limitada - usar apenas se necessário)
       if (CosmosService.isValidGTIN(barcode)) {
-        console.log('Buscando na API Cosmos...');
+        console.log('Buscando na API Cosmos (API limitada)...');
         const normalizedGTIN = CosmosService.normalizeGTIN(barcode);
         const cosmosResult = await CosmosService.getProductByGTIN(normalizedGTIN);
         
@@ -715,17 +747,7 @@ export class BarcodeService {
         }
       }
 
-      // 3. Fallback para Open Food Facts (produtos internacionais)
-      console.log('Buscando no Open Food Facts...');
-      const openFoodResult = await OpenFoodFactsService.getProduct(barcode);
-      if (openFoodResult) {
-        console.log('Produto encontrado no Open Food Facts');
-        // Fazer cache do resultado
-        await this.cacheProduct(barcode, openFoodResult);
-        return { found: true, product: openFoodResult };
-      }
-
-      // 4. Fallback para dados locais mesmo se antigos
+      // 5. Fallback para dados locais mesmo se antigos
       if (localResult.found) {
         console.log('Usando dados locais antigos como fallback');
         return {
@@ -737,7 +759,7 @@ export class BarcodeService {
         };
       }
 
-      // 5. Último recurso: produto vazio para preenchimento manual
+      // 6. Último recurso: produto vazio para preenchimento manual
       console.log('Produto não encontrado em nenhuma fonte');
       return {
         found: true,
@@ -870,31 +892,11 @@ export class BarcodeService {
     }
 
     // Buscar códigos não encontrados no cache
-    const cosmosPromises: Promise<{ barcode: string; result: ProductInfo | null }>[] = [];
     const openFoodPromises: Promise<{ barcode: string; result: ProductInfo | null }>[] = [];
+    const cosmosPromises: Promise<{ barcode: string; result: ProductInfo | null }>[] = [];
 
-    // Separar códigos válidos para Cosmos dos demais
-    const cosmosGTINs = toBeFetched.filter(barcode => CosmosService.isValidGTIN(barcode));
-    const otherBarcodes = toBeFetched.filter(barcode => !CosmosService.isValidGTIN(barcode));
-
-    // Buscar em lote na Cosmos
-    if (cosmosGTINs.length > 0) {
-      const cosmosResults = await CosmosService.getMultipleProductsByGTIN(cosmosGTINs);
-      for (const [gtin, result] of Object.entries(cosmosResults)) {
-        if (result) {
-          await this.cacheProduct(gtin, result, user.id);
-          results[gtin] = { found: true, product: result };
-        } else {
-          // Tentar Open Food Facts como fallback
-          openFoodPromises.push(
-            OpenFoodFactsService.getProduct(gtin).then(result => ({ barcode: gtin, result }))
-          );
-        }
-      }
-    }
-
-    // Buscar códigos não válidos para Cosmos diretamente no Open Food Facts
-    for (const barcode of otherBarcodes) {
+    // PRIMEIRO: Buscar todos os códigos no Open Food Facts (API gratuita)
+    for (const barcode of toBeFetched) {
       openFoodPromises.push(
         OpenFoodFactsService.getProduct(barcode).then(result => ({ barcode, result }))
       );
@@ -902,6 +904,8 @@ export class BarcodeService {
 
     // Processar resultados do Open Food Facts
     const openFoodResults = await Promise.allSettled(openFoodPromises);
+    const notFoundInOpenFood: string[] = [];
+    
     for (const promiseResult of openFoodResults) {
       if (promiseResult.status === 'fulfilled') {
         const { barcode, result } = promiseResult.value;
@@ -909,10 +913,40 @@ export class BarcodeService {
           await this.cacheProduct(barcode, result, user.id);
           results[barcode] = { found: true, product: result };
         } else {
-          results[barcode] = { found: false };
+          notFoundInOpenFood.push(barcode);
+        }
+      } else {
+        // Se houve erro na busca, adicionar à lista para tentar na Cosmos
+        const barcode = toBeFetched[openFoodResults.indexOf(promiseResult)];
+        if (barcode) {
+          notFoundInOpenFood.push(barcode);
         }
       }
     }
+
+    // SEGUNDO: Buscar códigos não encontrados no Open Food Facts na API Cosmos (limitada)
+    const cosmosGTINs = notFoundInOpenFood.filter(barcode => CosmosService.isValidGTIN(barcode));
+    
+    if (cosmosGTINs.length > 0) {
+      console.log(`Buscando ${cosmosGTINs.length} códigos na API Cosmos (limitada)...`);
+      const cosmosResults = await CosmosService.getMultipleProductsByGTIN(cosmosGTINs);
+      for (const [gtin, result] of Object.entries(cosmosResults)) {
+        if (result) {
+          await this.cacheProduct(gtin, result, user.id);
+          results[gtin] = { found: true, product: result };
+        } else {
+          results[gtin] = { found: false };
+        }
+      }
+    }
+
+    // Marcar códigos não válidos para Cosmos como não encontrados
+    const invalidGTINs = notFoundInOpenFood.filter(barcode => !CosmosService.isValidGTIN(barcode));
+    for (const barcode of invalidGTINs) {
+      results[barcode] = { found: false };
+    }
+
+
 
     // Combinar resultados do cache com os buscados
     return { ...cachedResults, ...results };
@@ -3394,7 +3428,7 @@ export class SpecificProductCreationService {
       
       const { data: newGeneric, error } = await ProductService.createGenericProduct({
         name: genericName,
-        category,
+        category_id: category,
         user_id: user.id
       });
 

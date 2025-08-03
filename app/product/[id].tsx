@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Share, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Share, Modal, TextInput, Image, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductService } from '../../lib/products';
 import { StoreService } from '../../lib/stores';
-import CategorySelector from '../../components/CategorySelector';
+
 import UnitSelector from '../../components/UnitSelector';
 import Toast from '../../components/Toast';
 import { useToast } from '../../lib/useToast';
 import PriceHistoryModal from '../../components/PriceHistoryModal';
 import SafeContainer from '../../components/SafeContainer';
 import GenericProductSelector from '../../components/GenericProductSelector';
+import ProductImage from '../../components/ProductImage';
+import BarcodeDisplay from '../../components/BarcodeDisplay';
+import { generateBarcode } from '../../lib/barcodeGenerator';
 import { Animated } from 'react-native';
 
 // Tipos para o produto e preços
@@ -21,11 +24,19 @@ type Product = {
   description?: string;
   image_url?: string;
   default_unit?: string;
+  barcode?: string;
+  barcode_type?: string;
   created_at: string;
   generic_product_id: string;
   generic_products?: {
     name: string;
-    category: string | null;
+    category_id: string | null;
+    categories?: {
+      id: string;
+      name: string;
+      icon: string;
+      color?: string;
+    };
   };
 };
 
@@ -57,12 +68,13 @@ export default function ProductDetail() {
   const [stores, setStores] = useState<Store[]>([]);
   const [loadingPrices, setLoadingPrices] = useState(false);
   const [priceModalVisible, setPriceModalVisible] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
   const [selectedUnit, setSelectedUnit] = useState<string>('un');
   const [showGenericProductModal, setShowGenericProductModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(false);
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
+  const [productImage, setProductImage] = useState<string | undefined>(undefined);
   
 
   
@@ -87,10 +99,10 @@ export default function ProductDetail() {
         
         if (data) {
           setProduct(data);
-          setSelectedCategory(data.generic_products?.category || null);
           setSelectedUnit(data.default_unit || 'un');
           setProductName(data.name);
           setProductDescription(data.description || '');
+          setProductImage(data.image_url || null);
           
           // Animar a entrada dos dados
           Animated.timing(fadeAnim, {
@@ -154,43 +166,7 @@ export default function ProductDetail() {
 
 
   
-  // Salvar alterações na categoria
-  const handleSaveCategory = async () => {
-    if (!product) return;
-    
-    try {
-      setSaving(true);
-      
-      // Atualizar a categoria no produto genérico
-      if (!product?.generic_products) {
-        Alert.alert('Erro', 'Produto genérico não encontrado');
-        return;
-      }
 
-      const { error } = await ProductService.updateGenericProduct(product.generic_product_id, {
-        category: selectedCategory
-      });
-      
-      if (error) {
-        Alert.alert('Erro', 'Não foi possível atualizar a categoria do produto');
-      } else {
-        showSuccess('Categoria atualizada com sucesso!');
-        // Atualizar o produto local
-        setProduct(prev => prev ? { 
-          ...prev, 
-          generic_products: prev.generic_products ? {
-            ...prev.generic_products,
-            category: selectedCategory
-          } : undefined
-        } : null);
-      }
-    } catch (error) {
-      console.error('Erro ao atualizar categoria:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao atualizar a categoria');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Salvar alterações na unidade padrão
   const handleSaveUnit = async () => {
@@ -287,6 +263,7 @@ export default function ProductDetail() {
       const { error } = await ProductService.updateSpecificProduct(product.id, {
         name: productName.trim(),
         description: productDescription.trim() || null,
+        image_url: productImage || null,
       });
 
       if (error) {
@@ -297,6 +274,7 @@ export default function ProductDetail() {
           ...prev,
           name: productName.trim(),
           description: productDescription.trim() || undefined,
+          image_url: productImage || undefined,
         } : null);
         setEditingProduct(false);
       }
@@ -313,8 +291,147 @@ export default function ProductDetail() {
     if (product) {
       setProductName(product.name);
       setProductDescription(product.description || '');
+      setProductImage(product.image_url || null);
     }
     setEditingProduct(false);
+  };
+
+  // Função para selecionar imagem
+  const handleSelectImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Precisamos de permissão para acessar suas fotos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setProductImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar imagem:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem');
+    }
+  };
+
+  // Função para tirar foto
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Precisamos de permissão para usar a câmera.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setProductImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      Alert.alert('Erro', 'Não foi possível tirar a foto');
+    }
+  };
+
+  // Função para mostrar opções de imagem
+  const handleImageOptions = () => {
+    Alert.alert(
+      'Imagem do Produto',
+      'Escolha uma opção:',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Galeria', onPress: handleSelectImage },
+        { text: 'Câmera', onPress: handleTakePhoto },
+        ...(productImage ? [{ text: 'Remover', onPress: () => setProductImage(null), style: 'destructive' as const }] : [])
+      ]
+    );
+  };
+
+  // Função para gerar código de barras
+  const handleGenerateBarcode = async () => {
+    if (!product) return;
+
+    Alert.alert(
+      'Gerar Código de Barras',
+      'Deseja gerar um novo código de barras para este produto?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Gerar', 
+          onPress: async () => {
+            try {
+              setSaving(true);
+              
+              const barcodeData = generateBarcode('EAN13');
+              
+              const { error } = await ProductService.updateSpecificProduct(product.id, {
+                barcode: barcodeData.code,
+                barcode_type: barcodeData.type,
+              });
+
+              if (error) {
+                Alert.alert('Erro', 'Não foi possível gerar o código de barras');
+              } else {
+                showSuccess('Código de barras gerado com sucesso!');
+                setProduct(prev => prev ? {
+                  ...prev,
+                  barcode: barcodeData.code,
+                  barcode_type: barcodeData.type,
+                } : null);
+              }
+            } catch (error) {
+              console.error('Erro ao gerar código de barras:', error);
+              Alert.alert('Erro', 'Ocorreu um erro ao gerar o código de barras');
+            } finally {
+              setSaving(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Função para atualizar imagem do produto
+  const handleImageChange = async (imageUri: string) => {
+    if (!product) return;
+
+    try {
+      setSaving(true);
+      
+      const { error } = await ProductService.updateSpecificProduct(product.id, {
+        image_url: imageUri,
+      });
+
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar a imagem');
+      } else {
+        showSuccess('Imagem atualizada com sucesso!');
+        setProduct(prev => prev ? {
+          ...prev,
+          image_url: imageUri,
+        } : null);
+        setProductImage(imageUri);
+      }
+    } catch (error) {
+      console.error('Erro ao atualizar imagem:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao atualizar a imagem');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Função para alterar o produto genérico
@@ -345,10 +462,10 @@ export default function ProductDetail() {
                   generic_product_id: newGenericProduct.id,
                   generic_products: {
                     name: newGenericProduct.name,
-                    category: newGenericProduct.category,
+                    category_id: newGenericProduct.category_id,
+                    categories: newGenericProduct.categories,
                   }
                 } : null);
-                setSelectedCategory(newGenericProduct.category);
               }
             } catch (error) {
               console.error('Erro ao alterar produto genérico:', error);
@@ -413,6 +530,19 @@ export default function ProductDetail() {
             
             {editingProduct ? (
               <View>
+                {/* Imagem do produto */}
+                <Text style={styles.fieldLabel}>Imagem do Produto</Text>
+                <TouchableOpacity style={styles.imageContainer} onPress={handleImageOptions}>
+                  {productImage ? (
+                    <Image source={{ uri: productImage }} style={styles.productImageLarge} />
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Ionicons name="camera-outline" size={40} color="#999" />
+                      <Text style={styles.imagePlaceholderText}>Adicionar Imagem</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                
                 <Text style={styles.fieldLabel}>Nome do Produto</Text>
                 <TextInput
                   style={styles.textInput}
@@ -456,12 +586,64 @@ export default function ProductDetail() {
               </View>
             ) : (
               <View>
+                {/* Exibir imagem do produto */}
+                {product.image_url && (
+                  <View style={styles.productImageContainer}>
+                    <Image source={{ uri: product.image_url }} style={styles.productImage} />
+                  </View>
+                )}
+                
                 <Text style={styles.productName}>{product.name}</Text>
                 {product.description && (
                   <Text style={styles.productDescription}>{product.description}</Text>
                 )}
+                
+                {/* Mostrar categoria */}
+                {product.generic_products?.categories && (
+                  <View style={styles.categoryInfo}>
+                    <Ionicons 
+                      name={product.generic_products.categories.icon as any || 'pricetag-outline'} 
+                      size={16} 
+                      color={product.generic_products.categories.color || '#4CAF50'} 
+                    />
+                    <Text style={styles.categoryText}>
+                      {product.generic_products.categories.name}
+                    </Text>
+                  </View>
+                )}
+                
+                {/* Botão para editar */}
+                <TouchableOpacity 
+                  style={styles.editProductButton}
+                  onPress={() => setEditingProduct(true)}
+                >
+                  <Ionicons name="create-outline" size={20} color="#4CAF50" />
+                  <Text style={styles.editProductButtonText}>Editar Produto</Text>
+                </TouchableOpacity>
               </View>
             )}
+          </View>
+
+          {/* Seção da imagem do produto */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Imagem do Produto</Text>
+            <ProductImage
+              imageUrl={product.image_url}
+              onImageChange={handleImageChange}
+              editable={true}
+              style={styles.productImageSection}
+            />
+          </View>
+
+          {/* Seção do código de barras */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Código de Barras</Text>
+            <BarcodeDisplay
+              barcode={product.barcode}
+              barcodeType={product.barcode_type}
+              onGenerateBarcode={handleGenerateBarcode}
+              style={styles.barcodeSection}
+            />
           </View>
 
           {/* Seção do produto genérico */}
@@ -473,10 +655,17 @@ export default function ProductDetail() {
                 <Text style={styles.genericProductName}>
                   {product.generic_products?.name || 'Não vinculado'}
                 </Text>
-                {product.generic_products?.category && (
-                  <Text style={styles.genericProductCategory}>
-                    Categoria: {product.generic_products.category}
-                  </Text>
+                {product.generic_products?.categories && (
+                  <View style={styles.categoryInfo}>
+                    <Ionicons 
+                      name={product.generic_products.categories.icon as any || 'pricetag-outline'} 
+                      size={16} 
+                      color={product.generic_products.categories.color || '#4CAF50'} 
+                    />
+                    <Text style={styles.categoryText}>
+                      {product.generic_products.categories.name}
+                    </Text>
+                  </View>
                 )}
               </View>
               
@@ -490,26 +679,7 @@ export default function ProductDetail() {
               </TouchableOpacity>
             </View>
           </View>
-          
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Categoria</Text>
-            <CategorySelector 
-              selectedCategory={selectedCategory} 
-              onSelectCategory={setSelectedCategory} 
-            />
-            
-            <TouchableOpacity 
-              style={[styles.saveButton, saving && styles.buttonDisabled]}
-              onPress={handleSaveCategory}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.saveButtonText}>Salvar Categoria</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Unidade Padrão</Text>
@@ -582,6 +752,8 @@ export default function ProductDetail() {
         onSelectProduct={handleChangeGenericProduct}
         searchQuery={product.name}
       />
+
+
       
       <Toast
         visible={toast.visible}
@@ -857,5 +1029,155 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '500',
     marginLeft: 4,
+  },
+  // Estilos para imagem do produto
+  imageContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  productImageContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  productImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  productImageLarge: {
+    width: 150,
+    height: 150,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  imagePlaceholder: {
+    width: 150,
+    height: 150,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePlaceholderText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#999',
+  },
+  // Estilos para categoria
+  categoryInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  categoryText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  // Estilos para botão de editar produto
+  editProductButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8f1',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  editProductButtonText: {
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  // Estilos para código de barras
+  barcodeContainer: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    alignItems: 'center',
+  },
+  barcodeImageContainer: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 4,
+    marginBottom: 12,
+  },
+  barcodeInfo: {
+    alignItems: 'center',
+  },
+  barcodeText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 4,
+  },
+  barcodeType: {
+    fontSize: 12,
+    color: '#666',
+  },
+  // Estilos para modal do código de barras
+  barcodeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  barcodeModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    margin: 20,
+    maxWidth: Dimensions.get('window').width - 40,
+  },
+  barcodeModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  barcodeModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  barcodeModalBody: {
+    alignItems: 'center',
+  },
+  largeBarcodeContainer: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginBottom: 20,
+  },
+  barcodeDetails: {
+    alignItems: 'center',
+  },
+  barcodeDetailText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  // Estilos para novos componentes
+  productImageSection: {
+    marginTop: 8,
+  },
+  productImageEdit: {
+    marginBottom: 16,
+  },
+  barcodeSection: {
+    marginTop: 8,
   },
 });

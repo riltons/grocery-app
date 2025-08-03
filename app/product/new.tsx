@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductService } from '../../lib/products';
@@ -12,16 +12,29 @@ import { useToast } from '../../lib/useToast';
 
 export default function NewProduct() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { toast, showSuccess, showError, hideToast } = useToast();
   
+  // Verificar se veio de uma lista específica
+  const listId = params.listId as string;
+  const returnTo = params.returnTo as string;
+  const prefilledName = params.name as string; // Nome pré-preenchido
+  const createGenericOnly = params.createGenericOnly === 'true'; // Criar apenas genérico
+  
+  console.log('📝 NOVO PRODUTO - Parâmetros recebidos:');
+  console.log('  listId:', listId);
+  console.log('  returnTo:', returnTo);
+  console.log('  prefilledName:', prefilledName);
+  console.log('  createGenericOnly:', createGenericOnly);
+  
   // Estados para gerenciar os dados do formulário
-  const [name, setName] = useState('');
+  const [productName, setProductName] = useState(prefilledName || '');
   const [description, setDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   
   // Validar formulário
-  const isFormValid = name.trim().length > 0;
+  const isFormValid = productName.trim().length > 0;
   
   // Salvar novo produto
   const handleSaveProduct = async () => {
@@ -34,7 +47,7 @@ export default function NewProduct() {
       setSaving(true);
       
       // Primeiro, verificar se o produto já existe
-      const { exists, error: checkError } = await ProductService.checkProductExists(name.trim());
+      const { exists, error: checkError } = await ProductService.checkProductExists(productName.trim());
       
       if (checkError) {
         console.error('Erro ao verificar produto:', checkError);
@@ -45,7 +58,7 @@ export default function NewProduct() {
       if (exists) {
         Alert.alert(
           'Produto já existe', 
-          `Já existe um produto com o nome "${name.trim()}". Por favor, escolha um nome diferente.`
+          `Já existe um produto com o nome "${productName.trim()}". Por favor, escolha um nome diferente.`
         );
         return;
       }
@@ -58,8 +71,8 @@ export default function NewProduct() {
       }
 
       const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
-        name: name.trim(),
-        category: selectedCategory || null,
+        name: productName.trim(),
+        category_id: selectedCategory || null,
         user_id: user.id,
       });
 
@@ -68,10 +81,26 @@ export default function NewProduct() {
         return;
       }
 
-      // Depois, criar o produto específico
+      // Se createGenericOnly for true, criar apenas o produto genérico
+      if (createGenericOnly) {
+        // Navegar baseado no contexto de onde veio, passando o ID do produto criado
+        if (listId) {
+          // Se veio de uma lista específica, voltar para ela com o produto criado
+          router.replace(`/list/${listId}?openGenericSelector=true&newProductId=${genericProduct.id}&newProductName=${encodeURIComponent(genericProduct.name)}`);
+        } else if (returnTo) {
+          // Se há um destino específico, ir para lá
+          router.replace(returnTo);
+        } else {
+          // Caso padrão: voltar para a tela anterior
+          router.back();
+        }
+        return;
+      }
+
+      // Caso contrário, criar também o produto específico
       const { data, error } = await ProductService.createSpecificProduct({
         generic_product_id: genericProduct.id,
-        name: name.trim(),
+        name: productName.trim(),
         brand: '',
         description: description.trim() || undefined,
         default_unit: 'un', // Unidade padrão inicial
@@ -85,11 +114,17 @@ export default function NewProduct() {
       }
       
       if (data) {
-        showSuccess('Produto cadastrado com sucesso!');
-        // Aguardar um pouco para o usuário ver o toast, depois voltar
-        setTimeout(() => {
+        // Navegar imediatamente após sucesso
+        if (listId) {
+          // Se veio de uma lista específica, voltar para ela
+          router.replace(`/list/${listId}`);
+        } else if (returnTo) {
+          // Se há um destino específico, ir para lá
+          router.replace(returnTo);
+        } else {
+          // Caso padrão: voltar para a tela anterior
           router.back();
-        }, 1500);
+        }
       }
     } catch (error) {
       console.error('Erro ao cadastrar produto:', error);
@@ -113,53 +148,66 @@ export default function NewProduct() {
         <View style={{ width: 24 }} />
       </View>
       
-      <ScrollView style={styles.content}>
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Nome do Produto *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ex: Arroz Integral"
-            value={name}
-            onChangeText={setName}
-            maxLength={100}
-          />
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        <View style={styles.formSection}>
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Nome do Produto *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: Arroz Integral"
+              value={productName}
+              onChangeText={setProductName}
+              maxLength={100}
+            />
+          </View>
+          
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Descrição</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Descrição do produto (opcional)"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={4}
+              maxLength={500}
+            />
+          </View>
+          
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Categoria</Text>
+            <CategorySelector 
+              selectedCategory={selectedCategory} 
+              onSelectCategory={setSelectedCategory} 
+            />
+          </View>
         </View>
-        
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Descrição</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Descrição do produto (opcional)"
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={4}
-            maxLength={500}
-          />
+
+        {/* Botões na parte inferior */}
+        <View style={styles.buttonSection}>
+          <TouchableOpacity 
+            style={[styles.saveButton, (!isFormValid || saving) && styles.buttonDisabled]}
+            onPress={handleSaveProduct}
+            disabled={!isFormValid || saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={styles.saveButtonText}>Criar Produto</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.cancelButton}
+            onPress={() => router.back()}
+            disabled={saving}
+          >
+            <Text style={styles.cancelButtonText}>Cancelar</Text>
+          </TouchableOpacity>
         </View>
-        
-        <View style={styles.formGroup}>
-          <Text style={styles.label}>Categoria</Text>
-          <CategorySelector 
-            selectedCategory={selectedCategory} 
-            onSelectCategory={setSelectedCategory} 
-          />
-        </View>
-        
-        <TouchableOpacity 
-          style={[styles.saveButton, (!isFormValid || saving) && styles.buttonDisabled]}
-          onPress={handleSaveProduct}
-          disabled={!isFormValid || saving}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="save-outline" size={20} color="#fff" />
-              <Text style={styles.saveButtonText}>Salvar Produto</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </ScrollView>
       
       <Toast
@@ -197,7 +245,13 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
     padding: 16,
+  },
+  formSection: {
+    flex: 1,
   },
   formGroup: {
     marginBottom: 20,
@@ -220,6 +274,11 @@ const styles = StyleSheet.create({
     minHeight: 100,
     textAlignVertical: 'top',
   },
+  buttonSection: {
+    paddingTop: 20,
+    paddingBottom: 40,
+    gap: 12,
+  },
   saveButton: {
     backgroundColor: '#4CAF50',
     flexDirection: 'row',
@@ -227,8 +286,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 16,
     borderRadius: 8,
-    marginTop: 20,
-    marginBottom: 40,
   },
   buttonDisabled: {
     backgroundColor: '#a5d6a7',
@@ -239,5 +296,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     marginLeft: 8,
+  },
+  cancelButton: {
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontWeight: '500',
+    fontSize: 16,
   },
 });

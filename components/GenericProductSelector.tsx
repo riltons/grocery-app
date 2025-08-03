@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ProductService } from '../lib/products';
 import { CategoryService, Category } from '../lib/categories';
 import { GenericProduct, supabase } from '../lib/supabase';
@@ -24,6 +25,7 @@ interface GenericProductSelectorProps {
   searchQuery?: string;
   allowMultipleSelection?: boolean;
   currentListProductNames?: string[]; // Nomes dos produtos já na lista atual
+  listId?: string; // ID da lista atual para navegação
 }
 
 export default function GenericProductSelector({
@@ -35,7 +37,9 @@ export default function GenericProductSelector({
   searchQuery = '',
   allowMultipleSelection = false,
   currentListProductNames = [],
+  listId,
 }: GenericProductSelectorProps) {
+  const router = useRouter();
   const [products, setProducts] = useState<GenericProduct[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<GenericProduct[]>([]);
   const [searchText, setSearchText] = useState(searchQuery);
@@ -268,7 +272,7 @@ export default function GenericProductSelector({
       
       const { data, error } = await ProductService.createGenericProduct({
         name: newProductName.trim(),
-        category: newProductCategory,
+        category_id: newProductCategory,
         user_id: user.id,
       });
 
@@ -295,8 +299,29 @@ export default function GenericProductSelector({
   };
 
   const handleShowCreateForm = () => {
-    setNewProductName(searchText);
-    setShowCreateForm(true);
+    console.log('🚀 NAVEGANDO PARA CRIAR PRODUTO GENÉRICO');
+    console.log('  listId:', listId);
+    console.log('  searchText:', searchText);
+    
+    // Fechar o modal atual
+    onClose();
+    
+    // Navegar para a página de novo produto passando o listId e nome pré-preenchido
+    const params = new URLSearchParams();
+    if (listId) {
+      params.append('listId', listId);
+    }
+    if (searchText.trim()) {
+      params.append('name', searchText.trim());
+    }
+    // Indicar que deve criar apenas produto genérico
+    params.append('createGenericOnly', 'true');
+    
+    const queryString = params.toString();
+    const url = queryString ? `/product/new?${queryString}` : '/product/new';
+    
+    console.log('  URL final:', url);
+    router.push(url);
   };
 
   const handleCancelCreate = () => {
@@ -390,13 +415,13 @@ export default function GenericProductSelector({
     <TouchableOpacity
       style={[
         styles.categoryItem,
-        newProductCategory === item.name && styles.categoryItemSelected
+        newProductCategory === item.id && styles.categoryItemSelected
       ]}
-      onPress={() => setNewProductCategory(item.name)}
+      onPress={() => setNewProductCategory(item.id)}
     >
       <Text style={[
         styles.categoryText,
-        newProductCategory === item.name && styles.categoryTextSelected
+        newProductCategory === item.id && styles.categoryTextSelected
       ]}>
         {item.name}
       </Text>

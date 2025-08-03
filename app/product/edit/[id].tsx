@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Activi
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { ProductService } from '../../../lib/products';
+import { ProductService, getCategoryNameById } from '../../../lib/products';
 import { CategoryService, Category } from '../../../lib/categories';
 import SafeContainer from '../../../components/SafeContainer';
 import Toast from '../../../components/Toast';

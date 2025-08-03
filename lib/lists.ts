@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getCategoryNameById } from './products';
 import type { List } from './supabase';
 
 /**
@@ -210,7 +211,7 @@ export const ListsService = {
             product_id: productInfo.id,
             generic_product_id: productInfo.generic_product_id,
             generic_product_name: productInfo.generic_products?.name || '',
-            category: productInfo.generic_products?.categories?.name || '',
+            category: productInfo.generic_products?.categories?.name || getCategoryNameById(category_id) || "",
             is_generic: false,
           };
         }
@@ -225,7 +226,7 @@ export const ListsService = {
             product_id: null,
             generic_product_id: item.generic_product_id || genericInfo?.id,
             generic_product_name: genericProduct.name,
-            category: genericProduct.categories?.name || '',
+            category: genericProduct.categories?.name || getCategoryNameById(category_id) || "",
             is_generic: true,
           };
         }

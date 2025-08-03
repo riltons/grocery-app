@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { GenericProduct, SpecificProduct } from './supabase';
+import { generateBarcode } from './barcodeGenerator';
 
 /**
  * Serviço para gerenciar operações com produtos genéricos e específicos
@@ -175,7 +176,9 @@ export const ProductService = {
             *,
             categories (
               id,
-              name
+              name,
+              icon,
+              color
             )
           )
         `)
@@ -209,7 +212,9 @@ export const ProductService = {
             *,
             categories (
               id,
-              name
+              name,
+              icon,
+              color
             )
           )
         `)
@@ -249,16 +254,26 @@ export const ProductService = {
    */
   createSpecificProduct: async (product: Omit<SpecificProduct, 'id' | 'created_at'>) => {
     try {
+      // Gerar código de barras se não foi fornecido
+      let productData = { ...product };
+      if (!productData.barcode) {
+        const barcodeData = generateBarcode('EAN13');
+        productData.barcode = barcodeData.code;
+        productData.barcode_type = barcodeData.type;
+      }
+
       const { data, error } = await supabase
         .from('specific_products')
-        .insert(product)
+        .insert(productData)
         .select(`
           *,
           generic_products (
             *,
             categories (
               id,
-              name
+              name,
+              icon,
+              color
             )
           )
         `)
@@ -634,3 +649,23 @@ export const ProductService = {
     }
   },
 };
+
+// Função de fallback para nomes de categorias quando o relacionamento falha
+export function getCategoryNameById(categoryId: string | null): string {
+  if (!categoryId) return 'Sem categoria';
+  
+  // Mapeamento de IDs para nomes de categorias
+  const categoryMapping: Record<string, string> = {
+    '96a0a394-673e-4a6c-b0d5-3deab6e97748': 'Mercearia',
+    '586594f6-24f5-43ec-a600-2bbce4e7ef06': 'Vegetais',
+    'c038197e-5638-4247-b73e-c409e8681f65': 'Frutas',
+    '476bb13f-5459-4908-ba39-875eca6eb4ce': 'Carnes',
+    'cc6de4bd-139c-4322-bbcf-357d1f1c477e': 'Laticínios',
+    '72da7af3-8ef1-4060-b20c-d3ff22cd53f1': 'Bebidas',
+    '5d3ffa94-b92d-49c7-ba52-4a997837b122': 'Limpeza',
+    '7a3f34d5-0e1c-4112-8619-42870a62876b': 'Higiene',
+    '1a81f94e-89aa-4aaf-997d-0ec54c705943': 'Casa',
+  };
+  
+  return categoryMapping[categoryId] || 'Outros';
+}

@@ -32,6 +32,7 @@ interface AddProductInterfaceProps {
   loading: boolean;
   currentListProductIds?: string[]; // IDs dos produtos já na lista atual
   currentListProductNames?: string[]; // Nomes dos produtos já na lista atual
+  listId?: string; // ID da lista atual para navegação
 }
 
 const COMMON_UNITS = ['un', 'kg', 'g', 'L', 'ml', 'pct', 'cx'];
@@ -47,6 +48,7 @@ export default function AddProductInterface({
   loading,
   currentListProductIds = [],
   currentListProductNames = [],
+  listId,
 }: AddProductInterfaceProps) {
   const [productName, setProductName] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -838,6 +840,7 @@ export default function AddProductInterface({
         searchQuery={productName}
         allowMultipleSelection={genericSelectorMultiMode}
         currentListProductNames={currentListProductNames}
+        listId={listId}
       />
 
       {/* Product Selector Modal */}

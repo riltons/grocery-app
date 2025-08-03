@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { BarcodeResult } from '../lib/barcode';
 
-interface SimpleBarcodeScanner {
+interface SimpleBarcodeProps {
   onBarcodeScanned: (result: BarcodeResult) => void;
   onClose: () => void;
   onManualEntry: () => void;
@@ -14,53 +14,38 @@ export default function SimpleBarcodeScanner({
   onBarcodeScanned, 
   onClose, 
   onManualEntry 
-}: SimpleBarcodeScanner) {
+}: SimpleBarcodeProps) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
+    const getCameraPermissions = async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+    };
+
     getCameraPermissions();
   }, []);
-
-  const getCameraPermissions = async () => {
-    try {
-      console.log('Solicitando permissão da câmera...');
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      console.log('Status da permissão:', status);
-      setHasPermission(status === 'granted');
-    } catch (error) {
-      console.error('Erro ao solicitar permissão:', error);
-      setHasPermission(false);
-    }
-  };
 
   const handleBarCodeScanned = ({ type, data }: { type: string; data: string }) => {
     if (scanned) return;
     
     setScanned(true);
-    console.log('Código escaneado:', { type, data });
     
     const result: BarcodeResult = {
-      type,
       data,
-      bounds: { origin: { x: 0, y: 0 }, size: { width: 0, height: 0 } },
-      cornerPoints: []
+      type,
+      isValid: true,
+      format: type as any
     };
     
     onBarcodeScanned(result);
   };
 
-  const resetScan = () => {
-    setScanned(false);
-  };
-
   if (hasPermission === null) {
     return (
       <View style={styles.container}>
-        <View style={styles.messageContainer}>
-          <Ionicons name="camera-outline" size={64} color="#666" />
-          <Text style={styles.messageText}>Solicitando permissão da câmera...</Text>
-        </View>
+        <Text style={styles.text}>Solicitando permissão da câmera...</Text>
       </View>
     );
   }
@@ -68,33 +53,19 @@ export default function SimpleBarcodeScanner({
   if (hasPermission === false) {
     return (
       <View style={styles.container}>
-        <View style={styles.messageContainer}>
-          <Ionicons name="camera-off-outline" size={64} color="#ff6b6b" />
-          <Text style={styles.messageTitle}>Acesso à Câmera Negado</Text>
-          <Text style={styles.messageText}>
-            Para usar o scanner, você precisa permitir o acesso à câmera.
-          </Text>
-          <Text style={styles.instructionText}>
-            1. Vá em Configurações do dispositivo{'\n'}
-            2. Encontre o Expo Go{'\n'}
-            3. Permita o acesso à Câmera{'\n'}
-            4. Volte ao app e tente novamente
-          </Text>
-          
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.retryButton} onPress={getCameraPermissions}>
-              <Text style={styles.buttonText}>Tentar Novamente</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.manualButton} onPress={onManualEntry}>
-              <Text style={styles.buttonText}>Entrada Manual</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <Text style={styles.buttonText}>Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <Ionicons name="camera-outline" size={64} color="white" />
+        <Text style={styles.title}>Acesso à Câmera Negado</Text>
+        <Text style={styles.text}>
+          Para usar o scanner, permita o acesso à câmera nas configurações.
+        </Text>
+        
+        <TouchableOpacity style={styles.button} onPress={onManualEntry}>
+          <Text style={styles.buttonText}>Entrada Manual</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity style={[styles.button, styles.closeButton]} onPress={onClose}>
+          <Text style={styles.buttonText}>Fechar</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -104,47 +75,48 @@ export default function SimpleBarcodeScanner({
       <CameraView
         style={styles.camera}
         facing="back"
-        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         barcodeScannerSettings={{
-          barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'codabar', 'itf14', 'pdf417', 'qr'],
+          barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'qr'],
         }}
+        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
       >
-        <View style={styles.overlay}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity style={styles.closeButtonTop} onPress={onClose}>
-              <Ionicons name="close" size={24} color="white" />
-            </TouchableOpacity>
-            <Text style={styles.headerText}>Escaneie o código de barras</Text>
-            <View style={{ width: 40 }} />
-          </View>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.headerButton} onPress={onClose}>
+            <Ionicons name="close" size={24} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Escanear Código</Text>
+          <TouchableOpacity style={styles.headerButton} onPress={onManualEntry}>
+            <Ionicons name="keypad" size={24} color="white" />
+          </TouchableOpacity>
+        </View>
 
-          {/* Scanning area */}
-          <View style={styles.scanArea}>
-            <View style={styles.scanFrame}>
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
-            </View>
-            <Text style={styles.scanText}>
-              Posicione o código de barras dentro do quadro
+        {/* Scan Area */}
+        <View style={styles.scanArea}>
+          <View style={styles.scanBox}>
+            <View style={[styles.corner, styles.topLeft]} />
+            <View style={[styles.corner, styles.topRight]} />
+            <View style={[styles.corner, styles.bottomLeft]} />
+            <View style={[styles.corner, styles.bottomRight]} />
+          </View>
+          
+          <Text style={styles.instruction}>
+            Posicione o código de barras dentro da área
+          </Text>
+        </View>
+
+        {/* Bottom Actions */}
+        <View style={styles.bottomActions}>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => setScanned(false)}
+            disabled={!scanned}
+          >
+            <Ionicons name="refresh" size={24} color={scanned ? "white" : "#666"} />
+            <Text style={[styles.actionText, !scanned && styles.disabledText]}>
+              Tentar Novamente
             </Text>
-          </View>
-
-          {/* Bottom controls */}
-          <View style={styles.bottomControls}>
-            {scanned && (
-              <TouchableOpacity style={styles.resetButton} onPress={resetScan}>
-                <Text style={styles.resetButtonText}>Escanear Novamente</Text>
-              </TouchableOpacity>
-            )}
-            
-            <TouchableOpacity style={styles.manualEntryButton} onPress={onManualEntry}>
-              <Ionicons name="create-outline" size={20} color="white" />
-              <Text style={styles.manualEntryText}>Entrada Manual</Text>
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </View>
       </CameraView>
     </View>
@@ -154,50 +126,73 @@ export default function SimpleBarcodeScanner({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'black',
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   camera: {
     flex: 1,
+    width: '100%',
   },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'transparent',
+  text: {
+    color: 'white',
+    fontSize: 16,
+    textAlign: 'center',
+    marginVertical: 10,
+  },
+  title: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  button: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  closeButton: {
+    backgroundColor: '#666',
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 50,
+    alignItems: 'center',
     paddingHorizontal: 20,
+    paddingTop: 50,
     paddingBottom: 20,
   },
-  closeButtonTop: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerButton: {
+    padding: 8,
   },
-  headerText: {
+  headerTitle: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   scanArea: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  scanFrame: {
+  scanBox: {
     width: 250,
-    height: 250,
+    height: 150,
     position: 'relative',
   },
   corner: {
     position: 'absolute',
-    width: 30,
-    height: 30,
+    width: 20,
+    height: 20,
     borderColor: '#4CAF50',
     borderWidth: 3,
   },
@@ -225,94 +220,27 @@ const styles = StyleSheet.create({
     borderLeftWidth: 0,
     borderTopWidth: 0,
   },
-  scanText: {
-    color: 'white',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 20,
-    paddingHorizontal: 40,
-  },
-  bottomControls: {
-    paddingBottom: 50,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  resetButton: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginBottom: 15,
-  },
-  resetButtonText: {
+  instruction: {
     color: 'white',
     fontSize: 16,
-    fontWeight: '500',
-  },
-  manualEntryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  manualEntryText: {
-    color: 'white',
-    fontSize: 16,
-    marginLeft: 8,
-  },
-  messageContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-  },
-  messageTitle: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: 20,
     textAlign: 'center',
-  },
-  messageText: {
-    color: '#ccc',
-    fontSize: 16,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  instructionText: {
-    color: '#999',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 20,
-    lineHeight: 20,
-  },
-  buttonContainer: {
     marginTop: 30,
-    width: '100%',
+    paddingHorizontal: 40,
   },
-  retryButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 15,
-    borderRadius: 8,
-    marginBottom: 10,
+  bottomActions: {
+    paddingBottom: 50,
+    alignItems: 'center',
   },
-  manualButton: {
-    backgroundColor: '#2196F3',
-    paddingVertical: 15,
-    borderRadius: 8,
-    marginBottom: 10,
+  actionButton: {
+    alignItems: 'center',
+    padding: 16,
   },
-  closeButton: {
-    backgroundColor: '#666',
-    paddingVertical: 15,
-    borderRadius: 8,
-  },
-  buttonText: {
+  actionText: {
     color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-    textAlign: 'center',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  disabledText: {
+    color: '#666',
   },
 });

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, 
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { ProductService } from '../../lib/products';
+import { ProductService, getCategoryNameById } from '../../lib/products';
 import SafeContainer from '../../components/SafeContainer';
 import Toast from '../../components/Toast';
 import { useToast } from '../../lib/useToast';

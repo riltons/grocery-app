@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ListsService } from '../../lib/lists';
-import { ProductService } from '../../lib/products';
+import { ProductService, getCategoryNameById } from '../../lib/products';
 import AddProductInterface from '../../components/AddProductInterface';
 import PriceInputModal from '../../components/PriceInputModal';
 import PriceEditModal from '../../components/PriceEditModal';
@@ -41,7 +41,13 @@ type ListItem = {
 };
 
 export default function ListDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ 
+    id: string;
+    openGenericSelector?: string;
+    newProductId?: string;
+    newProductName?: string;
+  }>();
+  const { id } = params;
   const [list, setList] = useState<List | null>(null);
   const [items, setItems] = useState<ListItem[]>([]);
   const [pendingItems, setPendingItems] = useState<ListItem[]>([]);
@@ -115,7 +121,7 @@ export default function ListDetail() {
     const groups: { [key: string]: ListItem[] } = {};
     
     items.forEach(item => {
-      const category = item.category || 'Sem categoria';
+      const category = (item.category || getCategoryNameById(item.category_id)) || 'Sem categoria';
       if (!groups[category]) {
         groups[category] = [];
       }
@@ -174,6 +180,34 @@ export default function ListDetail() {
     // Atualizar produtos frequentes quando a lista de itens mudar
     loadFrequentProducts();
   }, [items]);
+
+  // Detectar se deve abrir o GenericProductSelector automaticamente após criar produto
+  useEffect(() => {
+    if (params.openGenericSelector === 'true' && params.newProductId && params.newProductName) {
+      console.log('🎯 ABRINDO MODAL AUTOMATICAMENTE PARA PRODUTO CRIADO:', params.newProductName);
+      
+      // Pequeno delay para garantir que a página carregou completamente
+      setTimeout(async () => {
+        try {
+          // Buscar o produto genérico criado
+          const { data: genericProduct, error } = await ProductService.getGenericProductById(params.newProductId!);
+          
+          if (error || !genericProduct) {
+            console.error('Erro ao buscar produto genérico criado:', error);
+            return;
+          }
+          
+          // Adicionar automaticamente o produto à lista
+          await handleSelectGenericProduct(genericProduct, 1, 'un');
+          
+          // Limpar os parâmetros da URL
+          router.replace(`/list/${id}`);
+        } catch (error) {
+          console.error('Erro ao adicionar produto automaticamente:', error);
+        }
+      }, 500);
+    }
+  }, [params.openGenericSelector, params.newProductId, params.newProductName]);
 
   // Carregar sugestões de produtos
   const loadSuggestions = async () => {
@@ -446,7 +480,7 @@ export default function ListDetail() {
 
       const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
         name: productName,
-        category: null,
+        category_id: null,
         user_id: user.user.id,
       });
 
@@ -789,9 +823,9 @@ export default function ListDetail() {
               {item.unit}
             </Text>
           </View>
-          {item.category && (
+          {(item.category || getCategoryNameById(item.category_id)) && (
             <Text style={[styles.itemCategory, item.checked && styles.itemCategoryChecked]}>
-              • {item.category}
+              • {(item.category || getCategoryNameById(item.category_id))}
             </Text>
           )}
           {item.price && item.checked && (
@@ -871,6 +905,7 @@ export default function ListDetail() {
         loading={addingItem}
         currentListProductIds={items.filter(item => item.product_id).map(item => item.product_id!)}
         currentListProductNames={items.map(item => item.product_name)}
+        listId={id}
       />
 
       <PriceInputModal

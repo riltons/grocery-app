@@ -206,7 +206,7 @@ export default function BarcodeScanner({
         clearTimeout(inactivityTimer);
       }
     };
-  }, [cameraReady, scanned, resetInactivityTimer]);
+  }, [cameraReady, scanned]); // Removido resetInactivityTimer das dependências
 
   // Limpar timers ao desmontar componente
   useEffect(() => {
