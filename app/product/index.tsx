@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Alert } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductService, getCategoryNameById } from '../../lib/products';
+import { CategoryService } from '../../lib/categories';
+import { BarcodeResult } from '../../lib/barcode';
 import SafeContainer from '../../components/SafeContainer';
 import Toast from '../../components/Toast';
 import { useToast } from '../../lib/useToast';
+import FloatingActionButton from '../../components/FloatingActionButton';
+import ProductCategorySection from '../../components/ProductCategorySection';
+import BarcodeScannerModal from '../../components/BarcodeScannerModal';
 
 // Tipos para os produtos
 type Product = {
@@ -31,10 +36,12 @@ export default function ProductList() {
   const [genericProducts, setGenericProducts] = useState<any[]>([]);
   const [allProducts, setAllProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [deletingProducts, setDeletingProducts] = useState<Set<string>>(new Set());
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   
   // Estado para controlar a aba ativa
   const [activeTab, setActiveTab] = useState<'all' | 'generic' | 'specific'>('all');
@@ -65,15 +72,16 @@ export default function ProductList() {
     }
   };
   
-  // Carregar produtos
+  // Carregar produtos e categorias
   const fetchProducts = async () => {
     try {
       setLoading(true);
       
-      // Buscar produtos específicos e genéricos em paralelo
-      const [specificResult, genericResult] = await Promise.all([
+      // Buscar produtos específicos, genéricos e categorias em paralelo
+      const [specificResult, genericResult, categoriesResult] = await Promise.all([
         ProductService.getSpecificProducts(),
-        ProductService.getGenericProducts()
+        ProductService.getGenericProducts(),
+        CategoryService.getCategories()
       ]);
       
       if (specificResult.error) {
@@ -84,8 +92,13 @@ export default function ProductList() {
         console.error('Erro ao buscar produtos genéricos:', genericResult.error);
       }
       
+      if (categoriesResult.error) {
+        console.error('Erro ao buscar categorias:', categoriesResult.error);
+      }
+      
       const specificData = specificResult.data || [];
       const genericData = genericResult.data || [];
+      const categoriesData = categoriesResult.data || [];
       
       // Combinar todos os produtos para a aba "Todos"
       const combined = [
@@ -96,6 +109,7 @@ export default function ProductList() {
       setSpecificProducts(specificData);
       setGenericProducts(genericData);
       setAllProducts(combined);
+      setCategories(categoriesData);
       
       // Atualizar produtos filtrados baseado na aba ativa
       updateFilteredProducts(combined, specificData, genericData, activeTab, searchText);
@@ -210,83 +224,148 @@ export default function ProductList() {
       );
     }
   };
+
+  // Lidar com resultado do scanner de código de barras
+  const handleBarcodeScanned = (result: BarcodeResult) => {
+    setShowBarcodeScanner(false);
+    // Navegar para a página de novo produto com o código de barras
+    router.push(`/product/new?barcode=${result.data}`);
+  };
+
+  // Lidar com entrada manual de código de barras
+  const handleManualEntry = () => {
+    setShowBarcodeScanner(false);
+    // Navegar para a página de novo produto sem código de barras
+    router.push('/product/new?type=specific');
+  };
+
+  // Agrupar produtos por categoria
+  const groupProductsByCategory = (products: any[]) => {
+    const grouped: { [key: string]: any[] } = {};
+    const uncategorized: any[] = [];
+
+    products.forEach(product => {
+      let categoryName = 'Sem Categoria';
+      let categoryId = null;
+
+      if (product.type === 'generic') {
+        if (product.category_id) {
+          const category = categories.find(cat => cat.id === product.category_id);
+          if (category) {
+            categoryName = category.name;
+            categoryId = category.id;
+          }
+        }
+      } else if (product.generic_products?.categories) {
+        categoryName = product.generic_products.categories.name;
+        categoryId = product.generic_products.categories.id;
+      }
+
+      if (categoryId) {
+        if (!grouped[categoryName]) {
+          grouped[categoryName] = [];
+        }
+        grouped[categoryName].push(product);
+      } else {
+        uncategorized.push(product);
+      }
+    });
+
+    // Adicionar produtos sem categoria se houver
+    if (uncategorized.length > 0) {
+      grouped['Sem Categoria'] = uncategorized;
+    }
+
+    return grouped;
+  };
+
+  // Obter informações da categoria
+  const getCategoryInfo = (categoryName: string) => {
+    const category = categories.find(cat => cat.name === categoryName);
+    return {
+      icon: category?.icon || 'pricetag-outline',
+      color: category?.color || '#666',
+    };
+  };
   
-  // Renderizar cada item da lista
-  const renderProductItem = ({ item }: { item: any }) => {
-    const isDeleting = deletingProducts.has(item.id);
-    const isGeneric = item.type === 'generic';
-    
-    return (
-      <View style={styles.productItem}>
-        <TouchableOpacity 
-          style={styles.productContent}
-          onPress={() => handleProductPress(item)}
-          disabled={isDeleting}
-        >
-          <View style={styles.productInfo}>
-            <View style={styles.productHeader}>
-              <Text style={styles.productName}>{item.name}</Text>
-              <View style={[styles.typeBadge, isGeneric ? styles.genericBadge : styles.specificBadge]}>
-                <Text style={styles.typeBadgeText}>
-                  {isGeneric ? 'Genérico' : 'Específico'}
-                </Text>
-              </View>
-            </View>
-            
-            {item.brand && (
-              <Text style={styles.productBrand}>{item.brand}</Text>
-            )}
-            
-            {item.description && (
-              <Text style={styles.productDescription} numberOfLines={1}>
-                {item.description}
-              </Text>
-            )}
-            
-            {item.category && (
-              <Text style={styles.productCategory}>Categoria: {item.category}</Text>
-            )}
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#666" />
-        </TouchableOpacity>
-        
-        <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={[styles.editButton, isDeleting && styles.actionButtonDisabled]}
-            onPress={() => handleEditProduct(item)}
-            disabled={isDeleting}
-          >
-            <Ionicons name="pencil-outline" size={18} color="#4CAF50" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.deleteButton, isDeleting && styles.deleteButtonDisabled]}
-            onPress={() => handleDeleteProduct(item)}
-            disabled={isDeleting}
-          >
-            {isDeleting ? (
-              <ActivityIndicator size="small" color="#ff6b6b" />
-            ) : (
-              <Ionicons name="trash-outline" size={18} color="#ff6b6b" />
-            )}
-          </TouchableOpacity>
+  // Renderizar produtos agrupados por categoria
+  const renderCategorizedProducts = () => {
+    const groupedProducts = groupProductsByCategory(filteredProducts);
+    const categoryNames = Object.keys(groupedProducts).sort();
+
+    if (categoryNames.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="basket-outline" size={48} color="#ccc" />
+          <Text style={styles.emptyText}>
+            {searchText.length > 0 
+              ? 'Nenhum produto encontrado'
+              : 'Nenhum produto cadastrado'}
+          </Text>
+          {searchText.length === 0 && (
+            <Text style={styles.emptySubtext}>
+              Use o botão + para adicionar produtos
+            </Text>
+          )}
         </View>
-      </View>
+      );
+    }
+
+    return (
+      <ScrollView 
+        style={styles.categoriesContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {categoryNames.map(categoryName => {
+          const categoryInfo = getCategoryInfo(categoryName);
+          return (
+            <ProductCategorySection
+              key={categoryName}
+              categoryName={categoryName}
+              categoryIcon={categoryInfo.icon}
+              categoryColor={categoryInfo.color}
+              products={groupedProducts[categoryName]}
+              onProductPress={handleProductPress}
+              onEditProduct={handleEditProduct}
+              onDeleteProduct={handleDeleteProduct}
+              deletingProducts={deletingProducts}
+              initiallyExpanded={categoryNames.length <= 3}
+            />
+          );
+        })}
+        <View style={styles.fabSpacing} />
+      </ScrollView>
     );
   };
   
+  // Opções do FAB
+  const fabOptions = [
+    {
+      icon: 'barcode-outline',
+      label: 'Escanear Código',
+      onPress: () => setShowBarcodeScanner(true),
+      color: '#2196F3',
+    },
+    {
+      icon: 'add-outline',
+      label: 'Produto Genérico',
+      onPress: () => router.push('/product/new?type=generic'),
+      color: '#FF9800',
+    },
+    {
+      icon: 'create-outline',
+      label: 'Produto Específico',
+      onPress: () => router.push('/product/new?type=specific'),
+      color: '#4CAF50',
+    },
+  ];
+
   return (
     <SafeContainer style={styles.container}>
       <StatusBar style="dark" />
       
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Meus Produtos</Text>
-        <TouchableOpacity 
-          style={styles.addButton}
-          onPress={() => router.push('/product/new')}
-        >
-          <Ionicons name="add" size={24} color="#fff" />
-        </TouchableOpacity>
       </View>
       
       <View style={styles.searchContainer}>
@@ -340,33 +419,23 @@ export default function ProductList() {
           <Text style={styles.loadingText}>Carregando produtos...</Text>
         </View>
       ) : (
-        <FlatList
-          data={filteredProducts}
-          renderItem={renderProductItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.productList}
-          onRefresh={handleRefresh}
-          refreshing={refreshing}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="basket-outline" size={48} color="#ccc" />
-              <Text style={styles.emptyText}>
-                {searchText.length > 0 
-                  ? 'Nenhum produto encontrado'
-                  : 'Nenhum produto cadastrado'}
-              </Text>
-              {searchText.length === 0 && (
-                <TouchableOpacity 
-                  style={styles.emptyButton}
-                  onPress={() => router.push('/product/new')}
-                >
-                  <Text style={styles.emptyButtonText}>Adicionar Produto</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          }
-        />
+        renderCategorizedProducts()
       )}
+
+      {/* FAB */}
+      <FloatingActionButton
+        options={fabOptions}
+        mainIcon="add"
+        mainColor="#4CAF50"
+      />
+
+      {/* Scanner de código de barras */}
+      <BarcodeScannerModal
+        visible={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onBarcodeScanned={handleBarcodeScanned}
+        onManualEntry={handleManualEntry}
+      />
       
       <Toast
         visible={toast.visible}
@@ -381,12 +450,12 @@ export default function ProductList() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f5f5f5',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 16,
     paddingVertical: 16,
     backgroundColor: '#fff',
@@ -397,14 +466,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-  },
-  addButton: {
-    backgroundColor: '#4CAF50',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -434,50 +495,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  productList: {
-    padding: 16,
-  },
-  productItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    overflow: 'hidden',
-  },
-  productContent: {
+  categoriesContainer: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     padding: 16,
   },
-  productInfo: {
-    flex: 1,
+  fabSpacing: {
+    height: 120, // Espaço aumentado para o FAB e botões de navegação
   },
-  productName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#333',
-  },
-  productDescription: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
-  },
-  deleteButton: {
-    padding: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderLeftWidth: 1,
-    borderLeftColor: '#e0e0e0',
-  },
-  deleteButtonDisabled: {
-    opacity: 0.5,
-  },
+
   // Estilos para as abas
   tabsContainer: {
     flexDirection: 'row',
@@ -505,76 +530,24 @@ const styles = StyleSheet.create({
   activeTabText: {
     color: '#fff',
   },
-  // Estilos para os novos elementos do produto
-  productHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  typeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    marginLeft: 8,
-  },
-  genericBadge: {
-    backgroundColor: '#E3F2FD',
-  },
-  specificBadge: {
-    backgroundColor: '#E8F5E8',
-  },
-  typeBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#666',
-  },
-  productBrand: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 2,
-  },
-  productCategory: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-  },
-  editButton: {
-    padding: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderLeftWidth: 1,
-    borderLeftColor: '#e0e0e0',
-  },
-  actionButtonDisabled: {
-    opacity: 0.5,
-  },
+
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 40,
+    marginTop: 60,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#666',
-    marginTop: 12,
-    marginBottom: 20,
+    marginTop: 16,
+    marginBottom: 8,
     textAlign: 'center',
+    fontWeight: '500',
   },
-  emptyButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  emptyButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
 });

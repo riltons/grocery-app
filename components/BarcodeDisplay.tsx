@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 
@@ -16,6 +16,18 @@ export default function BarcodeDisplay({
   onGenerateBarcode,
   style 
 }: BarcodeDisplayProps) {
+  const [showFullScreen, setShowFullScreen] = useState(false);
+  const screenWidth = Dimensions.get('window').width;
+  
+  // Estilos dinâmicos para o modal
+  const modalContentStyle = {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginVertical: 40,
+    width: screenWidth - 32,
+    alignSelf: 'center' as const,
+  };
   
   const handleCopyBarcode = async () => {
     if (barcode) {
@@ -44,38 +56,100 @@ export default function BarcodeDisplay({
     );
   }
 
-  return (
-    <View style={[styles.container, style]}>
-      <View style={styles.barcodeContainer}>
-        {/* Representação visual simples do código de barras */}
-        <View style={styles.barcodeVisual}>
-          {Array.from({ length: 30 }, (_, i) => (
-            <View 
-              key={i}
-              style={[
-                styles.barcodeLine,
-                { 
-                  width: Math.random() > 0.5 ? 2 : 1,
-                  backgroundColor: Math.random() > 0.3 ? '#000' : 'transparent'
-                }
-              ]} 
-            />
-          ))}
-        </View>
-        
-        <View style={styles.barcodeInfo}>
-          <Text style={styles.barcodeNumber}>{barcode}</Text>
-          <Text style={styles.barcodeType}>{barcodeType || 'EAN13'}</Text>
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.copyButton}
-          onPress={handleCopyBarcode}
-        >
-          <Ionicons name="copy-outline" size={20} color="#666" />
-        </TouchableOpacity>
+  const renderBarcodeVisual = (isFullScreen = false) => {
+    const barcodeWidth = isFullScreen ? screenWidth - 80 : undefined; // Margens de 40px de cada lado
+    const lineCount = isFullScreen ? 80 : 30; // Mais linhas para melhor visualização
+    
+    return (
+      <View style={[
+        styles.barcodeVisual, 
+        isFullScreen && { 
+          width: barcodeWidth, 
+          height: 140, // Altura maior para melhor proporção
+          marginHorizontal: 0 // Remove padding horizontal no modo fullscreen
+        }
+      ]}>
+        {Array.from({ length: lineCount }, (_, i) => (
+          <View 
+            key={i}
+            style={[
+              styles.barcodeLine,
+              { 
+                width: Math.random() > 0.5 ? (isFullScreen ? 3 : 2) : (isFullScreen ? 2 : 1),
+                backgroundColor: Math.random() > 0.3 ? '#000' : 'transparent'
+              }
+            ]} 
+          />
+        ))}
       </View>
-    </View>
+    );
+  };
+
+  return (
+    <>
+      <View style={[styles.container, style]}>
+        <View style={styles.barcodeContainer}>
+          {/* Representação visual clicável do código de barras */}
+          <TouchableOpacity 
+            onPress={() => setShowFullScreen(true)}
+            activeOpacity={0.7}
+          >
+            {renderBarcodeVisual()}
+          </TouchableOpacity>
+          
+          <View style={styles.barcodeInfo}>
+            <Text style={styles.barcodeNumber}>{barcode}</Text>
+            <Text style={styles.barcodeType}>{barcodeType || 'EAN13'}</Text>
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.copyButton}
+            onPress={handleCopyBarcode}
+          >
+            <Ionicons name="copy-outline" size={20} color="#666" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Modal para exibir código de barras em tela cheia */}
+      <Modal
+        visible={showFullScreen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFullScreen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={modalContentStyle}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Código de Barras</Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowFullScreen(false)}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.fullScreenBarcodeContainer}>
+              {renderBarcodeVisual(true)}
+              
+              <View style={styles.fullScreenBarcodeInfo}>
+                <Text style={styles.fullScreenBarcodeNumber}>{barcode}</Text>
+                <Text style={styles.fullScreenBarcodeType}>{barcodeType || 'EAN13'}</Text>
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.fullScreenCopyButton}
+                onPress={handleCopyBarcode}
+              >
+                <Ionicons name="copy-outline" size={20} color="#4CAF50" />
+                <Text style={styles.fullScreenCopyText}>Copiar Código</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -147,5 +221,66 @@ const styles = StyleSheet.create({
     top: 8,
     right: 8,
     padding: 8,
+  },
+  // Estilos do modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  fullScreenBarcodeContainer: {
+    paddingHorizontal: 16, // Margens internas menores para maximizar largura
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  fullScreenBarcodeInfo: {
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  fullScreenBarcodeNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    letterSpacing: 2,
+  },
+  fullScreenBarcodeType: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  fullScreenCopyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8f1',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  fullScreenCopyText: {
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginLeft: 8,
+    fontSize: 16,
   },
 });

@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { ProductService } from '../../lib/products';
+import { BarcodeService } from '../../lib/barcode';
 import { supabase } from '../../lib/supabase';
 import CategorySelector from '../../components/CategorySelector';
+import GenericProductSelector from '../../components/GenericProductSelector';
 import SafeContainer from '../../components/SafeContainer';
 import Toast from '../../components/Toast';
 import { useToast } from '../../lib/useToast';
@@ -20,21 +22,68 @@ export default function NewProduct() {
   const returnTo = params.returnTo as string;
   const prefilledName = params.name as string; // Nome pré-preenchido
   const createGenericOnly = params.createGenericOnly === 'true'; // Criar apenas genérico
+  const scannedBarcode = params.barcode as string; // Código de barras escaneado
   
   console.log('📝 NOVO PRODUTO - Parâmetros recebidos:');
   console.log('  listId:', listId);
   console.log('  returnTo:', returnTo);
   console.log('  prefilledName:', prefilledName);
   console.log('  createGenericOnly:', createGenericOnly);
+  console.log('  scannedBarcode:', scannedBarcode);
   
   // Estados para gerenciar os dados do formulário
   const [productName, setProductName] = useState(prefilledName || '');
   const [description, setDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedGenericProduct, setSelectedGenericProduct] = useState<any>(null);
+  const [showGenericProductSelector, setShowGenericProductSelector] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingBarcodeInfo, setLoadingBarcodeInfo] = useState(false);
+  const [barcodeInfo, setBarcodeInfo] = useState<any>(null);
   
+  // Buscar informações do produto pelo código de barras
+  useEffect(() => {
+    if (scannedBarcode) {
+      fetchBarcodeInfo(scannedBarcode);
+    }
+  }, [scannedBarcode]);
+
+  const fetchBarcodeInfo = async (barcode: string) => {
+    try {
+      setLoadingBarcodeInfo(true);
+      console.log('🔍 Buscando informações do produto para código:', barcode);
+      
+      const result = await BarcodeService.searchWithFallback(barcode);
+      
+      if (result.found && result.product) {
+        console.log('✅ Produto encontrado:', result.product);
+        console.log('🖼️ Imagem do produto:', result.product.image);
+        setBarcodeInfo(result.product);
+        
+        // Preencher campos automaticamente
+        if (result.product.name && !productName) {
+          setProductName(result.product.name);
+        }
+        if (result.product.description && !description) {
+          setDescription(result.product.description);
+        }
+        
+        showSuccess('Informações do produto carregadas automaticamente!');
+      } else {
+        console.log('❌ Produto não encontrado nas APIs externas');
+        showError('Produto não encontrado nas bases de dados. Preencha as informações manualmente.');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar informações do produto:', error);
+      showError('Erro ao buscar informações do produto. Preencha manualmente.');
+    } finally {
+      setLoadingBarcodeInfo(false);
+    }
+  };
+
   // Validar formulário
-  const isFormValid = productName.trim().length > 0;
+  const isFormValid = productName.trim().length > 0 && 
+    (scannedBarcode ? selectedGenericProduct !== null : true);
   
   // Salvar novo produto
   const handleSaveProduct = async () => {
@@ -70,19 +119,19 @@ export default function NewProduct() {
         return;
       }
 
-      const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
-        name: productName.trim(),
-        category_id: selectedCategory || null,
-        user_id: user.id,
-      });
-
-      if (genericError || !genericProduct) {
-        Alert.alert('Erro', 'Não foi possível criar o produto genérico');
-        return;
-      }
-
       // Se createGenericOnly for true, criar apenas o produto genérico
       if (createGenericOnly) {
+        const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
+          name: productName.trim(),
+          category_id: selectedCategory || null,
+          user_id: user.id,
+        });
+
+        if (genericError || !genericProduct) {
+          Alert.alert('Erro', 'Não foi possível criar o produto genérico');
+          return;
+        }
+
         // Navegar baseado no contexto de onde veio, passando o ID do produto criado
         if (listId) {
           // Se veio de uma lista específica, voltar para ela com o produto criado
@@ -97,15 +146,48 @@ export default function NewProduct() {
         return;
       }
 
-      // Caso contrário, criar também o produto específico
-      const { data, error } = await ProductService.createSpecificProduct({
+      // Se há código de barras escaneado, usar produto genérico selecionado ou criar um novo
+      let genericProduct;
+      
+      if (scannedBarcode && selectedGenericProduct) {
+        // Usar produto genérico existente selecionado pelo usuário
+        genericProduct = selectedGenericProduct;
+      } else {
+        // Criar novo produto genérico
+        const { data: newGenericProduct, error: genericError } = await ProductService.createGenericProduct({
+          name: productName.trim(),
+          category_id: selectedCategory || null,
+          user_id: user.id,
+        });
+
+        if (genericError || !newGenericProduct) {
+          Alert.alert('Erro', 'Não foi possível criar o produto genérico');
+          return;
+        }
+        
+        genericProduct = newGenericProduct;
+      }
+
+      // Criar o produto específico
+      const productData = {
         generic_product_id: genericProduct.id,
         name: productName.trim(),
-        brand: '',
+        brand: barcodeInfo?.brand || '',
         description: description.trim() || undefined,
+        image_url: barcodeInfo?.image || undefined,
+        barcode: scannedBarcode || undefined,
+        barcode_type: scannedBarcode ? 'EAN13' : undefined,
+        external_id: barcodeInfo?.external_id || undefined,
+        data_source: barcodeInfo?.source || 'manual',
+        confidence_score: barcodeInfo?.confidence || undefined,
         default_unit: 'un', // Unidade padrão inicial
         user_id: user.id,
-      });
+      };
+      
+      console.log('💾 Salvando produto com dados:', productData);
+      console.log('🖼️ URL da imagem sendo salva:', productData.image_url);
+      
+      const { data, error } = await ProductService.createSpecificProduct(productData);
       
       if (error) {
         console.error('Erro ao cadastrar produto:', error);
@@ -149,6 +231,59 @@ export default function NewProduct() {
       </View>
       
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        {/* Seção de informações do código de barras */}
+        {scannedBarcode && (
+          <View style={styles.barcodeSection}>
+            <View style={styles.barcodeSectionHeader}>
+              <Ionicons name="barcode-outline" size={20} color="#4CAF50" />
+              <Text style={styles.barcodeSectionTitle}>Código Escaneado</Text>
+            </View>
+            
+            <Text style={styles.barcodeValue}>{scannedBarcode}</Text>
+            
+            {loadingBarcodeInfo && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#4CAF50" />
+                <Text style={styles.loadingText}>Buscando informações do produto...</Text>
+              </View>
+            )}
+            
+            {barcodeInfo && (
+              <View style={styles.barcodeInfoContainer}>
+                <Text style={styles.barcodeInfoTitle}>Informações encontradas:</Text>
+                {console.log('🔍 Estado do barcodeInfo na renderização:', barcodeInfo)}
+                
+                {barcodeInfo.image ? (
+                  <View style={styles.productImagePreview}>
+                    <Text style={styles.imagePreviewLabel}>Imagem do produto:</Text>
+                    <Image 
+                      source={{ uri: barcodeInfo.image }} 
+                      style={styles.previewImage}
+                      resizeMode="cover"
+                      onError={(error) => {
+                        console.log('❌ Erro ao carregar imagem:', error);
+                        console.log('🖼️ URL da imagem com erro:', barcodeInfo.image);
+                      }}
+                      onLoad={() => {
+                        console.log('✅ Imagem carregada com sucesso:', barcodeInfo.image);
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <Text style={styles.noImageText}>Nenhuma imagem encontrada</Text>
+                )}
+                
+                <Text style={styles.barcodeInfoSource}>Fonte: {barcodeInfo.source}</Text>
+                {barcodeInfo.confidence && (
+                  <Text style={styles.barcodeInfoConfidence}>
+                    Confiança: {Math.round(barcodeInfo.confidence * 100)}%
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+        
         <View style={styles.formSection}>
           <View style={styles.formGroup}>
             <Text style={styles.label}>Nome do Produto *</Text>
@@ -174,13 +309,34 @@ export default function NewProduct() {
             />
           </View>
           
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>Categoria</Text>
-            <CategorySelector 
-              selectedCategory={selectedCategory} 
-              onSelectCategory={setSelectedCategory} 
-            />
-          </View>
+          {/* Se há código de barras, mostrar seletor de produto genérico */}
+          {scannedBarcode ? (
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Produto Genérico *</Text>
+              <TouchableOpacity
+                style={styles.genericProductSelector}
+                onPress={() => setShowGenericProductSelector(true)}
+              >
+                <Text style={selectedGenericProduct ? styles.selectedGenericText : styles.placeholderText}>
+                  {selectedGenericProduct ? selectedGenericProduct.name : 'Selecionar produto genérico'}
+                </Text>
+                <Ionicons name="chevron-down" size={20} color="#666" />
+              </TouchableOpacity>
+              {selectedGenericProduct && (
+                <Text style={styles.helperText}>
+                  Este produto específico será vinculado ao produto genérico "{selectedGenericProduct.name}"
+                </Text>
+              )}
+            </View>
+          ) : (
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Categoria</Text>
+              <CategorySelector 
+                selectedCategory={selectedCategory} 
+                onSelectCategory={setSelectedCategory} 
+              />
+            </View>
+          )}
         </View>
 
         {/* Botões na parte inferior */}
@@ -210,6 +366,16 @@ export default function NewProduct() {
         </View>
       </ScrollView>
       
+      <GenericProductSelector
+        visible={showGenericProductSelector}
+        onClose={() => setShowGenericProductSelector(false)}
+        onSelectProduct={(product) => {
+          setSelectedGenericProduct(product);
+          setShowGenericProductSelector(false);
+        }}
+        searchQuery={productName}
+      />
+
       <Toast
         visible={toast.visible}
         message={toast.message}
@@ -310,5 +476,121 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
     fontSize: 16,
+  },
+  // Estilos para seção de código de barras
+  barcodeSection: {
+    backgroundColor: '#f8f9fa',
+    margin: 16,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  barcodeSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  barcodeSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+  },
+  barcodeValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    fontFamily: 'monospace',
+    marginBottom: 12,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  barcodeInfoContainer: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  barcodeInfoTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  barcodeInfoSource: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 2,
+  },
+  barcodeInfoConfidence: {
+    fontSize: 12,
+    color: '#4CAF50',
+  },
+  noImageText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  productImagePreview: {
+    marginBottom: 12,
+  },
+  imagePreviewLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+  },
+  previewImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  noImageText: {
+    fontSize: 12,
+    color: '#999',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  // Estilos para seletor de produto genérico
+  genericProductSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+  },
+  selectedGenericText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
+  },
+  placeholderText: {
+    fontSize: 16,
+    color: '#999',
+    flex: 1,
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });
