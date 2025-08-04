@@ -294,7 +294,7 @@ export interface ProductInfo {
   category?: string;
   image?: string;
   description?: string;
-  source: 'local' | 'cosmos' | 'openfoodfacts' | 'manual';
+  source: 'local' | 'cosmos' | 'openfoodfacts' | 'upcitemdb' | 'manual';
   confidence: number;
   genericProduct?: {
     id: string;
@@ -324,10 +324,11 @@ export interface BarcodeSearchResult {
  * 1. Banco de dados local (produtos específicos já cadastrados)
  * 2. Cache local (dados recentes de buscas anteriores)
  * 3. Open Food Facts (API gratuita e ilimitada)
- * 4. Cosmos API (API limitada - usar apenas quando necessário)
+ * 4. UPC Item DB (API gratuita com limite diário)
+ * 5. Cosmos API (API limitada - usar apenas quando necessário)
  * 
  * Esta sequência prioriza fontes gratuitas antes das limitadas,
- * otimizando o uso de quotas da API Cosmos.
+ * otimizando o uso de quotas das APIs pagas.
  */
 export class BarcodeService {
   private static readonly CACHE_TTL_HOURS = 24; // TTL padrão do cache em horas
@@ -604,6 +605,8 @@ export class BarcodeService {
         return Math.floor(baseTTL * (1 + confidence)); // 24-48h baseado na confiança
       case 'openfoodfacts':
         return Math.floor(baseTTL * confidence); // 12-24h baseado na confiança
+      case 'upcitemdb':
+        return Math.floor(baseTTL * confidence * 0.8); // 10-20h baseado na confiança
       default:
         return baseTTL;
     }
@@ -733,7 +736,17 @@ export class BarcodeService {
         return { found: true, product: openFoodResult };
       }
 
-      // 4. Fallback para API Cosmos (API limitada - usar apenas se necessário)
+      // 4. Busca no UPC Item DB (API gratuita com limite diário)
+      console.log('Buscando no UPC Item DB (API gratuita com limite)...');
+      const upcItemResult = await UPCItemDBService.getProduct(barcode);
+      if (upcItemResult) {
+        console.log('Produto encontrado no UPC Item DB');
+        // Fazer cache do resultado
+        await this.cacheProduct(barcode, upcItemResult);
+        return { found: true, product: upcItemResult };
+      }
+
+      // 5. Fallback para API Cosmos (API limitada - usar apenas se necessário)
       if (CosmosService.isValidGTIN(barcode)) {
         console.log('Buscando na API Cosmos (API limitada)...');
         const normalizedGTIN = CosmosService.normalizeGTIN(barcode);
@@ -924,8 +937,39 @@ export class BarcodeService {
       }
     }
 
-    // SEGUNDO: Buscar códigos não encontrados no Open Food Facts na API Cosmos (limitada)
-    const cosmosGTINs = notFoundInOpenFood.filter(barcode => CosmosService.isValidGTIN(barcode));
+    // SEGUNDO: Buscar códigos não encontrados no Open Food Facts na UPC Item DB
+    const upcItemPromises: Promise<{ barcode: string; result: ProductInfo | null }>[] = [];
+    let notFoundInUPCItem: string[] = [];
+
+    for (const barcode of notFoundInOpenFood) {
+      upcItemPromises.push(
+        UPCItemDBService.getProduct(barcode).then(result => ({ barcode, result }))
+      );
+    }
+
+    if (upcItemPromises.length > 0) {
+      console.log(`Buscando ${upcItemPromises.length} códigos na UPC Item DB...`);
+      const upcItemResults = await Promise.allSettled(upcItemPromises);
+      
+      for (const promiseResult of upcItemResults) {
+        if (promiseResult.status === 'fulfilled' && promiseResult.value.result) {
+          const { barcode, result } = promiseResult.value;
+          results[barcode] = result;
+          await this.cacheProduct(barcode, result);
+        } else {
+          // Se houve erro na busca, adicionar à lista para tentar na Cosmos
+          const barcode = notFoundInOpenFood[upcItemResults.indexOf(promiseResult)];
+          if (barcode) {
+            notFoundInUPCItem.push(barcode);
+          }
+        }
+      }
+    } else {
+      notFoundInUPCItem = notFoundInOpenFood;
+    }
+
+    // TERCEIRO: Buscar códigos não encontrados nas APIs anteriores na Cosmos (limitada)
+    const cosmosGTINs = notFoundInUPCItem.filter(barcode => CosmosService.isValidGTIN(barcode));
     
     if (cosmosGTINs.length > 0) {
       console.log(`Buscando ${cosmosGTINs.length} códigos na API Cosmos (limitada)...`);
@@ -2463,7 +2507,248 @@ export class GenericProductMatcher {
       return products.map(p => ({ product: p, popularity: 0 }));
     }
   }
-}/**
+}
+
+/**
+ * Serviço para integração com UPC Item DB (API gratuita com limite diário)
+ */
+/**
+ * Interfaces para UPC Item DB
+ */
+interface UPCItemDBResponse {
+  code: string;
+  total: number;
+  offset: number;
+  items: UPCItemDBProduct[];
+}
+
+interface UPCItemDBProduct {
+  ean: string;
+  title: string;
+  description?: string;
+  upc?: string;
+  brand?: string;
+  model?: string;
+  color?: string;
+  size?: string;
+  dimension?: string;
+  weight?: string;
+  category?: string;
+  currency?: string;
+  lowest_recorded_price?: number;
+  highest_recorded_price?: number;
+  images?: string[];
+  offers?: Array<{
+    merchant: string;
+    domain: string;
+    title: string;
+    currency: string;
+    list_price: string;
+    price: number;
+    shipping: string;
+    condition: string;
+    availability: string;
+    link: string;
+    updated_t: number;
+  }>;
+}
+
+export class UPCItemDBService {
+  private static readonly BASE_URL = 'https://api.upcitemdb.com/prod/trial/lookup';
+  private static readonly TIMEOUT_MS = 10000; // 10 segundos
+
+  /**
+   * Busca produto por código de barras na UPC Item DB
+   */
+  static async getProduct(barcode: string): Promise<ProductInfo | null> {
+    try {
+      console.log(`Buscando produto na UPC Item DB: ${barcode}`);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
+
+      const response = await fetch(`${this.BASE_URL}?upc=${barcode}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'GroceryApp/1.0'
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          console.warn('UPC Item DB: Limite de requisições atingido');
+          return null;
+        }
+        console.warn(`UPC Item DB retornou status ${response.status}`);
+        return null;
+      }
+
+      const data: UPCItemDBResponse = await response.json();
+
+      if (!data.items || data.items.length === 0) {
+        console.log('UPC Item DB: Produto não encontrado');
+        return null;
+      }
+
+      const product = data.items[0]; // Pegar o primeiro resultado
+      
+      // Mapear para ProductInfo
+      const productInfo: ProductInfo = {
+        barcode: product.ean || product.upc || barcode,
+        name: this.cleanProductName(product.title),
+        brand: product.brand || undefined,
+        category: this.mapCategory(product.category),
+        image: this.selectBestImage(product.images),
+        description: this.buildDescription(product),
+        source: 'upcitemdb',
+        confidence: this.calculateConfidence(product),
+        metadata: {
+          unit: this.extractUnit(product.title, product.size),
+          weight: product.weight,
+          gtin: product.ean || product.upc
+        }
+      };
+
+      console.log('UPC Item DB: Produto encontrado:', productInfo.name);
+      return productInfo;
+
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.warn('UPC Item DB: Timeout na requisição');
+      } else {
+        console.error('Erro ao buscar na UPC Item DB:', error);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * Limpa e normaliza o nome do produto
+   */
+  private static cleanProductName(title: string): string {
+    if (!title) return 'Produto sem nome';
+
+    return title
+      .replace(/\s+/g, ' ') // Múltiplos espaços para um
+      .replace(/[^\w\s\-\.\,\(\)]/g, '') // Remove caracteres especiais
+      .trim()
+      .substring(0, 100); // Limita tamanho
+  }
+
+  /**
+   * Mapeia categoria da UPC Item DB para categorias do sistema
+   */
+  private static mapCategory(category?: string): string {
+    if (!category) return '';
+
+    const categoryMap: { [key: string]: string } = {
+      'food': 'Alimentos',
+      'beverage': 'Bebidas',
+      'health': 'Saúde',
+      'beauty': 'Beleza',
+      'household': 'Casa',
+      'baby': 'Bebê',
+      'pet': 'Pet',
+      'electronics': 'Eletrônicos',
+      'clothing': 'Roupas',
+      'toys': 'Brinquedos'
+    };
+
+    const lowerCategory = category.toLowerCase();
+    return categoryMap[lowerCategory] || category;
+  }
+
+  /**
+   * Seleciona a melhor imagem disponível
+   */
+  private static selectBestImage(images?: string[]): string | undefined {
+    if (!images || images.length === 0) return undefined;
+
+    // Priorizar imagens maiores e de melhor qualidade
+    const sortedImages = images.filter(img => 
+      img && img.startsWith('http') && !img.includes('placeholder')
+    );
+
+    return sortedImages[0]; // Retorna a primeira imagem válida
+  }
+
+  /**
+   * Constrói descrição do produto
+   */
+  private static buildDescription(product: UPCItemDBProduct): string | undefined {
+    const parts: string[] = [];
+
+    if (product.description && product.description !== product.title) {
+      parts.push(product.description);
+    }
+
+    if (product.size) {
+      parts.push(`Tamanho: ${product.size}`);
+    }
+
+    if (product.weight) {
+      parts.push(`Peso: ${product.weight}`);
+    }
+
+    if (product.color) {
+      parts.push(`Cor: ${product.color}`);
+    }
+
+    if (product.model) {
+      parts.push(`Modelo: ${product.model}`);
+    }
+
+    return parts.length > 0 ? parts.join(' • ') : undefined;
+  }
+
+  /**
+   * Extrai unidade do produto
+   */
+  private static extractUnit(title: string, size?: string): string {
+    const text = `${title} ${size || ''}`.toLowerCase();
+
+    // Padrões para diferentes unidades
+    const unitPatterns = [
+      { pattern: /(\d+(?:\.\d+)?)\s*kg/g, unit: 'kg' },
+      { pattern: /(\d+(?:\.\d+)?)\s*g(?:\s|$)/g, unit: 'g' },
+      { pattern: /(\d+(?:\.\d+)?)\s*l(?:\s|$)/g, unit: 'l' },
+      { pattern: /(\d+(?:\.\d+)?)\s*ml/g, unit: 'ml' },
+      { pattern: /(\d+)\s*un/g, unit: 'un' },
+      { pattern: /(\d+)\s*pcs?/g, unit: 'un' },
+      { pattern: /(\d+)\s*pieces?/g, unit: 'un' }
+    ];
+
+    for (const { pattern, unit } of unitPatterns) {
+      if (pattern.test(text)) {
+        return unit;
+      }
+    }
+
+    return 'un'; // Unidade padrão
+  }
+
+  /**
+   * Calcula nível de confiança baseado na qualidade dos dados
+   */
+  private static calculateConfidence(product: UPCItemDBProduct): number {
+    let confidence = 0.6; // Base para UPC Item DB
+
+    // Aumentar confiança baseado na qualidade dos dados
+    if (product.brand) confidence += 0.1;
+    if (product.description) confidence += 0.1;
+    if (product.images && product.images.length > 0) confidence += 0.1;
+    if (product.category) confidence += 0.05;
+    if (product.size || product.weight) confidence += 0.05;
+
+    return Math.min(confidence, 0.9); // Máximo 90% para APIs externas
+  }
+}
+
+/**
  *
  Serviço para sugestões avançadas de produtos genéricos
  */
