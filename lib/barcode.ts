@@ -48,27 +48,27 @@ export class BarcodeValidator {
           result.isValid = this.validateEAN13(result.data);
           result.format = BarcodeFormat.EAN13;
           break;
-        
+
         case 'ean8':
           result.isValid = this.validateEAN8(result.data);
           result.format = BarcodeFormat.EAN8;
           break;
-        
+
         case 'upc_a':
           result.isValid = this.validateUPCA(result.data);
           result.format = BarcodeFormat.UPC_A;
           break;
-        
+
         case 'upc_e':
           result.isValid = this.validateUPCE(result.data);
           result.format = BarcodeFormat.UPC_E;
           break;
-        
+
         case 'qr':
           result.isValid = this.validateQR(result.data);
           result.format = BarcodeFormat.QR;
           break;
-        
+
         default:
           result.isValid = false;
       }
@@ -86,7 +86,7 @@ export class BarcodeValidator {
   private static validateEAN13(data: string): boolean {
     if (data.length !== 13) return false;
     if (!/^\d{13}$/.test(data)) return false;
-    
+
     return this.validateCheckDigit(data, 13);
   }
 
@@ -96,7 +96,7 @@ export class BarcodeValidator {
   private static validateEAN8(data: string): boolean {
     if (data.length !== 8) return false;
     if (!/^\d{8}$/.test(data)) return false;
-    
+
     return this.validateCheckDigit(data, 8);
   }
 
@@ -106,7 +106,7 @@ export class BarcodeValidator {
   private static validateUPCA(data: string): boolean {
     if (data.length !== 12) return false;
     if (!/^\d{12}$/.test(data)) return false;
-    
+
     return this.validateCheckDigit(data, 12);
   }
 
@@ -116,7 +116,7 @@ export class BarcodeValidator {
   private static validateUPCE(data: string): boolean {
     if (data.length !== 8) return false;
     if (!/^\d{8}$/.test(data)) return false;
-    
+
     // UPC-E tem validação específica, mas para simplicidade
     // vamos aceitar qualquer código de 8 dígitos numéricos
     return true;
@@ -137,7 +137,7 @@ export class BarcodeValidator {
   private static validateCheckDigit(data: string, length: number): boolean {
     const digits = data.split('').map(Number);
     const checkDigit = digits[length - 1];
-    
+
     let sum = 0;
     for (let i = 0; i < length - 1; i++) {
       if (length === 13) {
@@ -148,7 +148,7 @@ export class BarcodeValidator {
         sum += digits[i] * (i % 2 === 0 ? 3 : 1);
       }
     }
-    
+
     const calculatedCheckDigit = (10 - (sum % 10)) % 10;
     return calculatedCheckDigit === checkDigit;
   }
@@ -161,22 +161,22 @@ export class BarcodeValidator {
       case BarcodeFormat.EAN13:
         // Formato: 1 234567 890123
         return `${data.slice(0, 1)} ${data.slice(1, 7)} ${data.slice(7, 13)}`;
-      
+
       case BarcodeFormat.EAN8:
         // Formato: 1234 5678
         return `${data.slice(0, 4)} ${data.slice(4, 8)}`;
-      
+
       case BarcodeFormat.UPC_A:
         // Formato: 1 23456 78901 2
         return `${data.slice(0, 1)} ${data.slice(1, 6)} ${data.slice(6, 11)} ${data.slice(11, 12)}`;
-      
+
       case BarcodeFormat.UPC_E:
         // Formato: 12345678
         return data;
-      
+
       case BarcodeFormat.QR:
         return data;
-      
+
       default:
         return data;
     }
@@ -194,11 +194,11 @@ export class BarcodeValidator {
       case BarcodeFormat.UPC_A:
       case BarcodeFormat.UPC_E:
         return true;
-      
+
       case BarcodeFormat.QR:
         // Para QR codes, verificar se contém informações de produto
         return this.isProductQRCode(result.data);
-      
+
       default:
         return false;
     }
@@ -249,31 +249,31 @@ export class BarcodeValidator {
           name: 'EAN-13',
           description: 'Código de barras europeu de 13 dígitos'
         };
-      
+
       case BarcodeFormat.EAN8:
         return {
           name: 'EAN-8',
           description: 'Código de barras europeu de 8 dígitos'
         };
-      
+
       case BarcodeFormat.UPC_A:
         return {
           name: 'UPC-A',
           description: 'Código de barras americano de 12 dígitos'
         };
-      
+
       case BarcodeFormat.UPC_E:
         return {
           name: 'UPC-E',
           description: 'Código de barras americano compacto de 8 dígitos'
         };
-      
+
       case BarcodeFormat.QR:
         return {
           name: 'QR Code',
           description: 'Código QR bidimensional'
         };
-      
+
       default:
         return {
           name: 'Desconhecido',
@@ -341,7 +341,7 @@ export class BarcodeService {
   static async searchExistingSpecificProduct(barcode: string): Promise<BarcodeSearchResult> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         return { found: false };
       }
@@ -403,7 +403,7 @@ export class BarcodeService {
   static async searchLocal(barcode: string): Promise<BarcodeSearchResult> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         return { found: false, error: 'Usuário não autenticado' };
       }
@@ -504,7 +504,7 @@ export class BarcodeService {
 
       if (cacheEntries && cacheEntries.length > 0) {
         const cacheEntry = cacheEntries[0];
-        
+
         // Verificar se não expirou
         if (cacheEntry.expires_at && new Date(cacheEntry.expires_at) < new Date()) {
           // Cache expirado, remover entrada
@@ -536,7 +536,7 @@ export class BarcodeService {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const targetUserId = userId || user?.id;
-      
+
       if (!targetUserId) {
         console.warn('Usuário não autenticado, não foi possível fazer cache');
         return;
@@ -580,7 +580,7 @@ export class BarcodeService {
    */
   private static isDataFresh(product?: ProductInfo): boolean {
     if (!product) return false;
-    
+
     // Dados manuais são sempre considerados frescos
     if (product.source === 'manual' || product.source === 'local') {
       return true;
@@ -596,7 +596,7 @@ export class BarcodeService {
    */
   private static calculateCacheTTL(confidence: number, source: string): number {
     const baseTTL = this.CACHE_TTL_HOURS;
-    
+
     switch (source) {
       case 'local':
       case 'manual':
@@ -648,11 +648,11 @@ export class BarcodeService {
   static async cleanExpiredCache(): Promise<void> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) return;
 
       const now = new Date().toISOString();
-      
+
       await supabase
         .from('barcode_cache')
         .delete()
@@ -670,7 +670,7 @@ export class BarcodeService {
   static async findExistingProductByBarcode(barcode: string): Promise<SpecificProduct | null> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) return null;
 
       const { data, error } = await supabase
@@ -699,7 +699,7 @@ export class BarcodeService {
     const dataTime = new Date(timestamp);
     const now = new Date();
     const diffHours = (now.getTime() - dataTime.getTime()) / (1000 * 60 * 60);
-    
+
     return diffHours <= freshHours;
   }
 
@@ -751,7 +751,7 @@ export class BarcodeService {
         console.log('Buscando na API Cosmos (API limitada)...');
         const normalizedGTIN = CosmosService.normalizeGTIN(barcode);
         const cosmosResult = await CosmosService.getProductByGTIN(normalizedGTIN);
-        
+
         if (cosmosResult) {
           console.log('Produto encontrado na API Cosmos');
           // Fazer cache do resultado
@@ -821,7 +821,7 @@ export class BarcodeService {
         if (cacheResult.found) {
           cacheHit = true;
           sourcesAttempted.push('cache');
-          
+
           if (this.isDataFresh(cacheResult.product)) {
             const searchTime = Date.now() - startTime;
             return {
@@ -840,7 +840,7 @@ export class BarcodeService {
       // Busca com fallback
       sourcesAttempted.push('local');
       const result = await this.searchWithFallback(barcode);
-      
+
       // Determinar fontes tentadas baseado no resultado
       if (result.found && result.product) {
         if (result.product.source !== 'local') {
@@ -849,7 +849,7 @@ export class BarcodeService {
       }
 
       const searchTime = Date.now() - startTime;
-      
+
       return {
         result,
         metrics: {
@@ -880,7 +880,7 @@ export class BarcodeService {
     [barcode: string]: BarcodeSearchResult;
   }> {
     const results: { [barcode: string]: BarcodeSearchResult } = {};
-    
+
     // Separar códigos que estão no cache dos que precisam ser buscados
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -918,7 +918,7 @@ export class BarcodeService {
     // Processar resultados do Open Food Facts
     const openFoodResults = await Promise.allSettled(openFoodPromises);
     const notFoundInOpenFood: string[] = [];
-    
+
     for (const promiseResult of openFoodResults) {
       if (promiseResult.status === 'fulfilled') {
         const { barcode, result } = promiseResult.value;
@@ -950,7 +950,7 @@ export class BarcodeService {
     if (upcItemPromises.length > 0) {
       console.log(`Buscando ${upcItemPromises.length} códigos na UPC Item DB...`);
       const upcItemResults = await Promise.allSettled(upcItemPromises);
-      
+
       for (const promiseResult of upcItemResults) {
         if (promiseResult.status === 'fulfilled' && promiseResult.value.result) {
           const { barcode, result } = promiseResult.value;
@@ -970,7 +970,7 @@ export class BarcodeService {
 
     // TERCEIRO: Buscar códigos não encontrados nas APIs anteriores na Cosmos (limitada)
     const cosmosGTINs = notFoundInUPCItem.filter(barcode => CosmosService.isValidGTIN(barcode));
-    
+
     if (cosmosGTINs.length > 0) {
       console.log(`Buscando ${cosmosGTINs.length} códigos na API Cosmos (limitada)...`);
       const cosmosResults = await CosmosService.getMultipleProductsByGTIN(cosmosGTINs);
@@ -1006,7 +1006,7 @@ export class BarcodeService {
   }> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         return { totalEntries: 0, expiredEntries: 0, sourceBreakdown: {} };
       }
@@ -1028,7 +1028,7 @@ export class BarcodeService {
       cacheEntries?.forEach(entry => {
         // Contar por fonte
         sourceBreakdown[entry.source] = (sourceBreakdown[entry.source] || 0) + 1;
-        
+
         // Contar expirados
         if (entry.expires_at && new Date(entry.expires_at) < now) {
           expiredCount++;
@@ -1056,7 +1056,7 @@ export class BarcodeService {
   }> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         return { removedExpired: 0, removedDuplicates: 0, totalRemoved: 0 };
       }
@@ -1164,7 +1164,7 @@ export class CosmosService {
    */
   static async getProductByGTIN(gtin: string): Promise<ProductInfo | null> {
     console.log('🔑 Token Cosmos carregado:', this.API_KEY ? 'SIM' : 'NÃO');
-    
+
     if (!this.API_KEY) {
       console.warn('Chave da API Cosmos não configurada');
       return null;
@@ -1172,7 +1172,7 @@ export class CosmosService {
 
     try {
       const response = await this.makeRequest(`/gtins/${gtin}`);
-      
+
       if (!response) {
         return null;
       }
@@ -1210,7 +1210,7 @@ export class CosmosService {
           // Produto não encontrado
           return null;
         }
-        
+
         if (response.status === 429 && retryCount < this.MAX_RETRIES) {
           // Rate limit - aguardar e tentar novamente
           const delay = Math.pow(2, retryCount) * 1000; // Backoff exponencial
@@ -1222,7 +1222,7 @@ export class CosmosService {
       }
 
       const data = await response.json();
-      
+
       // Verificar se é uma resposta de erro
       if ('error' in data) {
         const errorData = data as CosmosErrorResponse;
@@ -1350,19 +1350,19 @@ export class CosmosService {
    */
   static async getMultipleProductsByGTIN(gtins: string[]): Promise<{ [gtin: string]: ProductInfo | null }> {
     const results: { [gtin: string]: ProductInfo | null } = {};
-    
+
     // Processar em lotes para não sobrecarregar a API
     const batchSize = 5;
     for (let i = 0; i < gtins.length; i += batchSize) {
       const batch = gtins.slice(i, i + batchSize);
-      
+
       const batchPromises = batch.map(async (gtin) => {
         const result = await this.getProductByGTIN(gtin);
         return { gtin, result };
       });
 
       const batchResults = await Promise.allSettled(batchPromises);
-      
+
       batchResults.forEach((promiseResult, index) => {
         const gtin = batch[index];
         if (promiseResult.status === 'fulfilled') {
@@ -1417,7 +1417,7 @@ export class CosmosService {
   } | null> {
     try {
       const response = await this.makeRequest('/usage');
-      
+
       if (response && 'requests_today' in response) {
         return {
           requestsToday: (response as any).requests_today || 0,
@@ -1456,17 +1456,17 @@ export class CosmosService {
   static normalizeGTIN(gtin: string): string {
     // Remove espaços e caracteres especiais
     const cleaned = gtin.replace(/\D/g, '');
-    
+
     // Converte EAN-8 para EAN-13 adicionando zeros à esquerda
     if (cleaned.length === 8) {
       return '00000' + cleaned;
     }
-    
+
     // Converte UPC-A para EAN-13 adicionando zero à esquerda
     if (cleaned.length === 12) {
       return '0' + cleaned;
     }
-    
+
     return cleaned;
   }
 }
@@ -1541,7 +1541,7 @@ export class OpenFoodFactsService {
   static async getProduct(barcode: string): Promise<ProductInfo | null> {
     try {
       const response = await this.makeRequest(`/product/${barcode}.json`);
-      
+
       if (!response || response.status === 0) {
         return null;
       }
@@ -1576,7 +1576,7 @@ export class OpenFoodFactsService {
         if (response.status === 404) {
           return null;
         }
-        
+
         if (response.status === 429 && retryCount < this.MAX_RETRIES) {
           // Rate limit - aguardar e tentar novamente
           const delay = Math.pow(2, retryCount) * 1000;
@@ -1608,14 +1608,14 @@ export class OpenFoodFactsService {
    * Transforma dados do Open Food Facts para ProductInfo
    */
   private static transformOpenFoodFactsToProductInfo(
-    offData: OpenFoodFactsResponse, 
+    offData: OpenFoodFactsResponse,
     barcode: string
   ): ProductInfo {
     const product = offData.product!;
-    
+
     // Priorizar nomes em português
     const productName = product.product_name_pt || product.product_name || 'Produto sem nome';
-    
+
     const productInfo: ProductInfo = {
       barcode,
       name: productName,
@@ -1689,9 +1689,9 @@ export class OpenFoodFactsService {
    */
   private static selectBestImage(product: OpenFoodFactsProduct): string | undefined {
     // Prioridade: front_url > front_small_url > image_url
-    return product.image_front_url || 
-           product.image_front_small_url || 
-           product.image_url;
+    return product.image_front_url ||
+      product.image_front_small_url ||
+      product.image_url;
   }
 
   /**
@@ -1730,16 +1730,16 @@ export class OpenFoodFactsService {
 
     // Nome do produto
     if (product.product_name || product.product_name_pt) score += 0.2;
-    
+
     // Marca
     if (product.brands) score += 0.1;
-    
+
     // Categoria
     if (product.categories_hierarchy && product.categories_hierarchy.length > 0) score += 0.1;
-    
+
     // Imagem
     if (product.image_front_url || product.image_url) score += 0.1;
-    
+
     // Informações nutricionais
     if (product.nutriments && Object.keys(product.nutriments).length > 0) score += 0.1;
 
@@ -1818,7 +1818,7 @@ export class OpenFoodFactsService {
     if (!product.nutriments) return undefined;
 
     const nutriments = product.nutriments;
-    
+
     return {
       energy: nutriments.energy_100g,
       fat: nutriments.fat_100g,
@@ -1839,19 +1839,19 @@ export class OpenFoodFactsService {
    */
   static async getMultipleProducts(barcodes: string[]): Promise<{ [barcode: string]: ProductInfo | null }> {
     const results: { [barcode: string]: ProductInfo | null } = {};
-    
+
     // Processar em lotes menores para não sobrecarregar a API
     const batchSize = 3;
     for (let i = 0; i < barcodes.length; i += batchSize) {
       const batch = barcodes.slice(i, i + batchSize);
-      
+
       const batchPromises = batch.map(async (barcode) => {
         const result = await this.getProduct(barcode);
         return { barcode, result };
       });
 
       const batchResults = await Promise.allSettled(batchPromises);
-      
+
       batchResults.forEach((promiseResult, index) => {
         const barcode = batch[index];
         if (promiseResult.status === 'fulfilled') {
@@ -1904,13 +1904,13 @@ export class OpenFoodFactsService {
     try {
       const encodedText = encodeURIComponent(searchText);
       const response = await this.makeRequest(`/cgi/search.pl?search_terms=${encodedText}&json=1&page_size=${limit}`);
-      
+
       if (!response || !('products' in response)) {
         return [];
       }
 
       const products = (response as any).products as OpenFoodFactsProduct[];
-      
+
       return products
         .filter(product => product.product_name || product.product_name_pt)
         .map((product, index) => this.transformOpenFoodFactsToProductInfo({
@@ -1931,7 +1931,7 @@ export class OpenFoodFactsService {
  * Implementa algoritmos de matching por nome e categoria
  */
 export class GenericProductMatcher {
-  
+
   /**
    * Mapeamento de categorias externas para categorias internas
    */
@@ -1993,7 +1993,7 @@ export class GenericProductMatcher {
     'personal-care': 'higiene pessoal',
     'baby-food': 'alimentação infantil',
     'pet-food': 'ração para animais',
-    
+
     // Categorias Cosmos para categorias internas
     'alimentos': 'alimentos',
     'bebidas': 'bebidas',
@@ -2076,13 +2076,13 @@ export class GenericProductMatcher {
 
       // Normalizar o nome do produto
       const normalizedName = this.normalizeProductName(productName);
-      
+
       // Buscar todos os produtos genéricos do usuário
       const { data: genericProducts } = await ProductService.getGenericProducts();
       if (!genericProducts) return null;
 
       // 1. Busca exata por nome
-      const exactMatch = genericProducts.find(product => 
+      const exactMatch = genericProducts.find(product =>
         this.normalizeProductName(product.name) === normalizedName
       );
       if (exactMatch) return exactMatch;
@@ -2094,7 +2094,7 @@ export class GenericProductMatcher {
       // 3. Busca por categoria se fornecida
       if (category) {
         const mappedCategory = this.mapExternalCategory(category);
-        const categoryMatch = genericProducts.find(product => 
+        const categoryMatch = genericProducts.find(product =>
           product.category?.toLowerCase() === mappedCategory.toLowerCase()
         );
         if (categoryMatch) return categoryMatch;
@@ -2126,7 +2126,7 @@ export class GenericProductMatcher {
       if (!user) return [];
 
       const normalizedName = this.normalizeProductName(productName);
-      
+
       // Buscar todos os produtos genéricos
       const { data: genericProducts } = await ProductService.getGenericProducts();
       if (!genericProducts) return [];
@@ -2134,7 +2134,7 @@ export class GenericProductMatcher {
       const suggestions: { product: GenericProduct; similarity: number; reason: string }[] = [];
 
       // 1. Busca exata
-      const exactMatch = genericProducts.find(product => 
+      const exactMatch = genericProducts.find(product =>
         this.normalizeProductName(product.name) === normalizedName
       );
       if (exactMatch) {
@@ -2148,11 +2148,11 @@ export class GenericProductMatcher {
       // 2. Busca por palavras-chave
       for (const [category, keywords] of Object.entries(this.CATEGORY_KEYWORDS)) {
         if (keywords.some(keyword => normalizedName.includes(keyword.toLowerCase()))) {
-          const categoryProducts = genericProducts.filter(product => 
+          const categoryProducts = genericProducts.filter(product =>
             this.normalizeProductName(product.name).includes(category) ||
             product.category?.toLowerCase().includes(category)
           );
-          
+
           categoryProducts.forEach(product => {
             if (!suggestions.find(s => s.product.id === product.id)) {
               suggestions.push({
@@ -2168,10 +2168,10 @@ export class GenericProductMatcher {
       // 3. Busca por categoria
       if (category) {
         const mappedCategory = this.mapExternalCategory(category);
-        const categoryProducts = genericProducts.filter(product => 
+        const categoryProducts = genericProducts.filter(product =>
           product.category?.toLowerCase().includes(mappedCategory.toLowerCase())
         );
-        
+
         categoryProducts.forEach(product => {
           if (!suggestions.find(s => s.product.id === product.id)) {
             suggestions.push({
@@ -2199,12 +2199,12 @@ export class GenericProductMatcher {
 
       // 5. Verificar se é produto essencialmente genérico
       if (this.isEssentiallyGeneric(productName)) {
-        const essentiallyGenericProducts = genericProducts.filter(product => 
-          this.ESSENTIALLY_GENERIC_KEYWORDS.some(keyword => 
+        const essentiallyGenericProducts = genericProducts.filter(product =>
+          this.ESSENTIALLY_GENERIC_KEYWORDS.some(keyword =>
             this.normalizeProductName(product.name).includes(keyword)
           )
         );
-        
+
         essentiallyGenericProducts.forEach(product => {
           if (!suggestions.find(s => s.product.id === product.id)) {
             suggestions.push({
@@ -2230,7 +2230,7 @@ export class GenericProductMatcher {
    * Cria um produto específico vinculado ao genérico
    */
   static async createSpecificProduct(
-    productInfo: ProductInfo, 
+    productInfo: ProductInfo,
     genericProductId: string
   ): Promise<SpecificProduct | null> {
     try {
@@ -2263,7 +2263,7 @@ export class GenericProductMatcher {
 
       // Criar o produto específico
       const { data, error } = await ProductService.createSpecificProduct(specificProductData);
-      
+
       if (error) {
         console.error('Erro ao criar produto específico:', error);
         return null;
@@ -2311,7 +2311,7 @@ export class GenericProductMatcher {
   private static findByKeywords(normalizedName: string, products: GenericProduct[]): GenericProduct | null {
     for (const [category, keywords] of Object.entries(this.CATEGORY_KEYWORDS)) {
       if (keywords.some(keyword => normalizedName.includes(keyword.toLowerCase()))) {
-        const match = products.find(product => 
+        const match = products.find(product =>
           this.normalizeProductName(product.name).includes(category) ||
           product.category?.toLowerCase().includes(category)
         );
@@ -2325,14 +2325,14 @@ export class GenericProductMatcher {
    * Busca produto por similaridade usando algoritmo de Levenshtein
    */
   private static findBySimilarity(
-    targetName: string, 
+    targetName: string,
     products: GenericProduct[]
   ): { product: GenericProduct; similarity: number } | null {
     let bestMatch: { product: GenericProduct; similarity: number } | null = null;
 
     for (const product of products) {
       const similarity = this.calculateSimilarity(targetName, this.normalizeProductName(product.name));
-      
+
       if (!bestMatch || similarity > bestMatch.similarity) {
         bestMatch = { product, similarity };
       }
@@ -2375,7 +2375,7 @@ export class GenericProductMatcher {
 
     const distance = matrix[len1][len2];
     const maxLength = Math.max(len1, len2);
-    
+
     return 1 - (distance / maxLength);
   }
 
@@ -2384,7 +2384,7 @@ export class GenericProductMatcher {
    */
   private static isEssentiallyGeneric(productName: string): boolean {
     const normalized = this.normalizeProductName(productName);
-    return this.ESSENTIALLY_GENERIC_KEYWORDS.some(keyword => 
+    return this.ESSENTIALLY_GENERIC_KEYWORDS.some(keyword =>
       normalized.includes(keyword)
     );
   }
@@ -2442,7 +2442,7 @@ export class GenericProductMatcher {
    */
   private static getBarcodeType(barcode: string): string {
     if (!barcode) return 'UNKNOWN';
-    
+
     switch (barcode.length) {
       case 8:
         return 'EAN8';
@@ -2484,7 +2484,7 @@ export class GenericProductMatcher {
 
       // Contar uso por produto genérico
       const usageCount: { [key: string]: number } = {};
-      
+
       usageStats.forEach(item => {
         if (item.list_item_products && item.list_item_products.length > 0) {
           const specificProduct = item.list_item_products[0].specific_products;
@@ -2497,7 +2497,7 @@ export class GenericProductMatcher {
 
       // Calcular popularidade normalizada
       const maxUsage = Math.max(...Object.values(usageCount), 1);
-      
+
       return products.map(product => ({
         product,
         popularity: (usageCount[product.id] || 0) / maxUsage
@@ -2595,7 +2595,7 @@ export class UPCItemDBService {
       }
 
       const product = data.items[0]; // Pegar o primeiro resultado
-      
+
       // Mapear para ProductInfo
       const productInfo: ProductInfo = {
         barcode: product.ean || product.upc || barcode,
@@ -2669,7 +2669,7 @@ export class UPCItemDBService {
     if (!images || images.length === 0) return undefined;
 
     // Priorizar imagens maiores e de melhor qualidade
-    const sortedImages = images.filter(img => 
+    const sortedImages = images.filter(img =>
       img && img.startsWith('http') && !img.includes('placeholder')
     );
 
@@ -2753,12 +2753,12 @@ export class UPCItemDBService {
  Serviço para sugestões avançadas de produtos genéricos
  */
 export class GenericProductSuggestionService {
-  
+
   /**
    * Sugere produtos genéricos com ranking por similaridade e popularidade
    */
   static async getSuggestionsWithRanking(
-    productName: string, 
+    productName: string,
     category?: string,
     limit: number = 5
   ): Promise<{
@@ -2771,7 +2771,7 @@ export class GenericProductSuggestionService {
     try {
       // Obter sugestões básicas
       const basicSuggestions = await GenericProductMatcher.suggestGenericProducts(productName, category);
-      
+
       if (basicSuggestions.length === 0) {
         return [];
       }
@@ -2779,15 +2779,15 @@ export class GenericProductSuggestionService {
       // Obter ranking de popularidade
       const products = basicSuggestions.map(s => s.product);
       const popularityRanking = await GenericProductMatcher.rankProductsByPopularity(products);
-      
+
       // Combinar similaridade e popularidade
       const rankedSuggestions = basicSuggestions.map(suggestion => {
         const popularityData = popularityRanking.find(p => p.product.id === suggestion.product.id);
         const popularity = popularityData?.popularity || 0;
-        
+
         // Fórmula: 70% similaridade + 30% popularidade
         const finalScore = (suggestion.similarity * 0.7) + (popularity * 0.3);
-        
+
         return {
           product: suggestion.product,
           similarity: suggestion.similarity,
@@ -2820,9 +2820,9 @@ export class GenericProductSuggestionService {
       if (!user) return [];
 
       const normalizedName = GenericProductMatcher['normalizeProductName'](productName);
-      
+
       // Verificar se é produto essencialmente genérico
-      const isEssentiallyGeneric = GenericProductMatcher['ESSENTIALLY_GENERIC_KEYWORDS'].some(keyword => 
+      const isEssentiallyGeneric = GenericProductMatcher['ESSENTIALLY_GENERIC_KEYWORDS'].some(keyword =>
         normalizedName.includes(keyword)
       );
 
@@ -2845,16 +2845,16 @@ export class GenericProductSuggestionService {
         if (normalizedName.includes(keyword)) {
           const matchingProducts = genericProducts.filter(product => {
             const productNormalized = GenericProductMatcher['normalizeProductName'](product.name);
-            return productNormalized.includes(keyword) || 
-                   product.category?.toLowerCase().includes('fruta') ||
-                   product.category?.toLowerCase().includes('verdura') ||
-                   product.category?.toLowerCase().includes('legume');
+            return productNormalized.includes(keyword) ||
+              product.category?.toLowerCase().includes('fruta') ||
+              product.category?.toLowerCase().includes('verdura') ||
+              product.category?.toLowerCase().includes('legume');
           });
 
           matchingProducts.forEach(product => {
             const productNormalized = GenericProductMatcher['normalizeProductName'](product.name);
             const isExactMatch = productNormalized === normalizedName || productNormalized.includes(keyword);
-            
+
             if (!suggestions.find(s => s.product.id === product.id)) {
               suggestions.push({
                 product,
@@ -2892,7 +2892,7 @@ export class GenericProductSuggestionService {
     try {
       // Obter sugestões básicas
       const basicSuggestions = await GenericProductMatcher.suggestGenericProducts(productName, category);
-      
+
       if (!userContext) {
         return basicSuggestions.map(s => ({
           product: s.product,
@@ -2918,7 +2918,7 @@ export class GenericProductSuggestionService {
         }
 
         // Bonus por padrões de compra
-        if (userContext.shoppingPatterns?.some(pattern => 
+        if (userContext.shoppingPatterns?.some(pattern =>
           suggestion.product.name.toLowerCase().includes(pattern.toLowerCase())
         )) {
           contextBonus += 0.1;
@@ -2992,7 +2992,7 @@ export class GenericProductSuggestionService {
           const specificProduct = item.list_item_products[0].specific_products;
           if (specificProduct?.generic_products) {
             const genericProduct = specificProduct.generic_products;
-            
+
             // Produtos recentes
             if (!recentProducts.includes(genericProduct.id)) {
               recentProducts.push(genericProduct.id);
@@ -3011,7 +3011,7 @@ export class GenericProductSuggestionService {
 
       // Categorias mais frequentes
       const frequentCategories = Object.entries(categoryCount)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([, a], [, b]) => b - a)
         .slice(0, 5)
         .map(([category]) => category);
 
@@ -3034,7 +3034,7 @@ export class GenericProductSuggestionService {
    */
   private static extractShoppingPatterns(productNames: string[]): string[] {
     const wordCount: { [key: string]: number } = {};
-    
+
     // Palavras irrelevantes para filtrar
     const stopWords = ['de', 'da', 'do', 'com', 'sem', 'para', 'em', 'na', 'no', 'e', 'ou', 'a', 'o'];
 
@@ -3050,7 +3050,7 @@ export class GenericProductSuggestionService {
     // Retornar palavras mais frequentes
     return Object.entries(wordCount)
       .filter(([, count]) => count >= 2) // Aparecer pelo menos 2 vezes
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
       .map(([word]) => word);
   }
@@ -3093,7 +3093,7 @@ export class GenericProductSuggestionService {
 
       // Agrupar por produto genérico
       const genericProductMap = new Map<string, GenericProduct>();
-      
+
       specificProducts.forEach(specific => {
         if (specific.generic_products) {
           genericProductMap.set(specific.generic_products.id, specific.generic_products);
@@ -3209,7 +3209,7 @@ export class GenericProductSuggestionService {
       const finalSuggestions = Array.from(allSuggestions.values()).map(suggestion => {
         // Score final é a média ponderada dos scores
         const finalScore = suggestion.scores.reduce((sum, score) => sum + score, 0) / suggestion.scores.length;
-        
+
         // Determinar nível de confiança
         let confidence: 'high' | 'medium' | 'low';
         if (finalScore >= 0.8) {
@@ -3243,7 +3243,7 @@ export class GenericProductSuggestionService {
  * Serviço para criação e validação de produtos específicos
  */
 export class SpecificProductCreationService {
-  
+
   /**
    * Vincula automaticamente produto escaneado a produto genérico
    * Busca o melhor produto genérico baseado no nome e categoria
@@ -3282,14 +3282,14 @@ export class SpecificProductCreationService {
 
         // 1. Matching exato por nome (peso 100)
         if (productInfo.name.toLowerCase().includes(generic.name.toLowerCase()) ||
-            generic.name.toLowerCase().includes(productInfo.name.toLowerCase())) {
+          generic.name.toLowerCase().includes(productInfo.name.toLowerCase())) {
           score += 100;
           reasons.push('nome similar');
         }
 
         // 2. Matching por categoria (peso 50)
         if (productInfo.category && generic.category &&
-            productInfo.category.toLowerCase() === generic.category.toLowerCase()) {
+          productInfo.category.toLowerCase() === generic.category.toLowerCase()) {
           score += 50;
           reasons.push('categoria igual');
         }
@@ -3297,7 +3297,7 @@ export class SpecificProductCreationService {
         // 3. Matching por palavras-chave (peso 30)
         const productWords = productInfo.name.toLowerCase().split(/\s+/);
         const genericWords = generic.name.toLowerCase().split(/\s+/);
-        const commonWords = productWords.filter(word => 
+        const commonWords = productWords.filter(word =>
           word.length > 2 && genericWords.some(gw => gw.includes(word) || word.includes(gw))
         );
         if (commonWords.length > 0) {
@@ -3384,10 +3384,10 @@ export class SpecificProductCreationService {
       if (!barcodeResult.isValid) {
         // Tentar outros formatos
         const formats = ['ean8', 'upc_a', 'upc_e'];
-        const validFormat = formats.find(format => 
+        const validFormat = formats.find(format =>
           BarcodeValidator.validateBarcode(productInfo.barcode, format).isValid
         );
-        
+
         if (!validFormat) {
           warnings.push('Código de barras pode não ser válido');
         }
@@ -3491,7 +3491,7 @@ export class SpecificProductCreationService {
 
       // 5. Criar produto específico
       const createdProduct = await GenericProductMatcher.createSpecificProduct(correctedProductInfo, genericProductId);
-      
+
       if (!createdProduct) {
         return {
           success: false,
@@ -3556,11 +3556,11 @@ export class SpecificProductCreationService {
 
       if (!nameError && nameMatches) {
         const normalizedTargetName = GenericProductMatcher['normalizeProductName'](productName);
-        
+
         for (const product of nameMatches) {
           const normalizedProductName = GenericProductMatcher['normalizeProductName'](product.name);
           const similarity = GenericProductMatcher['calculateSimilarity'](normalizedTargetName, normalizedProductName);
-          
+
           if (similarity > 0.9) { // 90% de similaridade
             return {
               hasDuplicate: true,
@@ -3625,15 +3625,15 @@ export class SpecificProductCreationService {
     if (!corrected.metadata) {
       corrected.metadata = {};
     }
-    
+
     if (extractedData.weight && !corrected.metadata.weight) {
       corrected.metadata.weight = extractedData.weight;
     }
-    
+
     if (extractedData.volume && !corrected.metadata.volume) {
       corrected.metadata.volume = extractedData.volume;
     }
-    
+
     if (extractedData.unit && !corrected.metadata.unit) {
       corrected.metadata.unit = extractedData.unit;
     }
@@ -3652,14 +3652,14 @@ export class SpecificProductCreationService {
     try {
       let { data: { user }, error: authError } = await supabase.auth.getUser();
       console.log('Auth check result:', { user: user?.id, authError });
-      
+
       if (authError || !user || !user.id) {
         console.error('Erro de autenticação:', authError);
-        
+
         // Try to get session directly
         const { data: { session } } = await supabase.auth.getSession();
         console.log('Session check:', { session: session?.user?.id });
-        
+
         if (session?.user?.id) {
           // Use session user
           user = session.user;
@@ -3668,7 +3668,7 @@ export class SpecificProductCreationService {
           // Try to refresh session
           const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
           console.log('Refresh attempt:', { user: refreshData?.user?.id, error: refreshError });
-          
+
           if (refreshData?.user?.id) {
             user = refreshData.user;
             console.log('Using refreshed user:', user.id);
@@ -3683,14 +3683,14 @@ export class SpecificProductCreationService {
 
       // Extrair nome genérico do nome específico
       const genericName = this.extractGenericName(productInfo.name);
-      
+
       // Determinar categoria
       const category = productInfo.category || this.inferCategoryFromName(productInfo.name);
 
       // Verificar se já existe produto genérico similar
       const { data: existingGenerics } = await ProductService.getGenericProducts();
-      const existingSimilar = existingGenerics?.find(product => 
-        GenericProductMatcher['normalizeProductName'](product.name) === 
+      const existingSimilar = existingGenerics?.find(product =>
+        GenericProductMatcher['normalizeProductName'](product.name) ===
         GenericProductMatcher['normalizeProductName'](genericName)
       );
 
@@ -3703,14 +3703,14 @@ export class SpecificProductCreationService {
       }
 
       // Criar novo produto genérico
-      console.log('Criando produto genérico:', { 
-        name: genericName, 
-        category, 
+      console.log('Criando produto genérico:', {
+        name: genericName,
+        category,
         user_id: user.id,
         user_id_type: typeof user.id,
-        user_id_length: user.id?.length 
+        user_id_length: user.id?.length
       });
-      
+
       const { data: newGeneric, error } = await ProductService.createGenericProduct({
         name: genericName,
         category_id: category,
@@ -3764,7 +3764,7 @@ export class SpecificProductCreationService {
    */
   private static inferCategoryFromName(productName: string): string {
     const normalizedName = GenericProductMatcher['normalizeProductName'](productName);
-    
+
     // Verificar palavras-chave para categorias
     for (const [category, keywords] of Object.entries(GenericProductMatcher['CATEGORY_KEYWORDS'])) {
       if (keywords.some(keyword => normalizedName.includes(keyword.toLowerCase()))) {
@@ -3773,11 +3773,11 @@ export class SpecificProductCreationService {
     }
 
     // Verificar se é produto essencialmente genérico
-    if (GenericProductMatcher['ESSENTIALLY_GENERIC_KEYWORDS'].some(keyword => 
+    if (GenericProductMatcher['ESSENTIALLY_GENERIC_KEYWORDS'].some(keyword =>
       normalizedName.includes(keyword)
     )) {
-      if (normalizedName.includes('fruta') || 
-          ['banana', 'maçã', 'maca', 'laranja', 'uva', 'manga'].some(fruit => normalizedName.includes(fruit))) {
+      if (normalizedName.includes('fruta') ||
+        ['banana', 'maçã', 'maca', 'laranja', 'uva', 'manga'].some(fruit => normalizedName.includes(fruit))) {
         return 'frutas';
       } else {
         return 'verduras';
@@ -3794,7 +3794,7 @@ export class SpecificProductCreationService {
     try {
       const urlObj = new URL(url);
       return ['http:', 'https:'].includes(urlObj.protocol) &&
-             /\.(jpg|jpeg|png|gif|webp)$/i.test(urlObj.pathname);
+        /\.(jpg|jpeg|png|gif|webp)$/i.test(urlObj.pathname);
     } catch {
       return false;
     }
@@ -3841,7 +3841,7 @@ export class SpecificProductCreationService {
       if (updates.description) updateData.description = updates.description;
       if (updates.image) updateData.image_url = updates.image;
       if (updates.metadata?.unit) updateData.default_unit = updates.metadata.unit;
-      
+
       // Atualizar dados de sincronização se não for para preservar dados do usuário
       if (!options?.preserveUserData) {
         if (updates.source) updateData.data_source = updates.source;
@@ -3851,7 +3851,7 @@ export class SpecificProductCreationService {
 
       // Atualizar no banco de dados
       const { data: updatedProduct, error: updateError } = await ProductService.updateSpecificProduct(productId, updateData);
-      
+
       if (updateError || !updatedProduct) {
         return {
           success: false,
@@ -3873,7 +3873,7 @@ export class SpecificProductCreationService {
             unit: updatedProduct.default_unit || undefined
           }
         };
-        
+
         await BarcodeService.cacheProduct(existingProduct.barcode, updatedProductInfo, user.id);
       }
 
@@ -3939,7 +3939,7 @@ export class SpecificProductCreationService {
 
       // Remover produto
       const { error: deleteError } = await ProductService.deleteSpecificProduct(productId);
-      
+
       if (deleteError) {
         return {
           success: false,

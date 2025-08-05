@@ -81,6 +81,61 @@ export default function NewProduct() {
     }
   };
 
+  // Função para extrair o primeiro nome do produto para busca de genéricos
+  const extractFirstProductName = (fullName: string): string => {
+    if (!fullName) return '';
+    
+    console.log('🔍 Extraindo nome genérico de:', fullName);
+    
+    // Lista de marcas comuns para remover
+    const commonBrands = [
+      'nestle', 'unilever', 'coca-cola', 'pepsi', 'danone', 'lactalis',
+      'uncle', 'bens', 'knorr', 'maggi', 'hellmanns', 'ades', 'sadia',
+      'perdigao', 'seara', 'friboi', 'swift', 'aurora', 'korin',
+      'tio', 'joao', 'camil', 'namorados', 'kicaldo', 'broto', 'legal',
+      'qualita', 'great', 'value', 'marca', 'brand'
+    ];
+    
+    // Lista de palavras a ignorar
+    const wordsToIgnore = [
+      'com', 'sem', 'para', 'tipo', 'sabor', 'natural', 'integral',
+      'light', 'diet', 'zero', 'premium', 'especial', 'tradicional',
+      'caseiro', 'artesanal', 'orgânico', 'organico'
+    ];
+    
+    // Remover quantidades e unidades
+    let cleanName = fullName
+      .replace(/\d+\s*(kg|g|ml|l|un|unidades?|pacotes?|caixas?|latas?|garrafas?|frascos?|sachês?)/gi, '')
+      .replace(/\b\d+\b/g, '') // Remove números soltos
+      .replace(/[()[\]]/g, '') // Remove parênteses e colchetes
+      .replace(/\s+/g, ' ') // Normaliza espaços
+      .trim();
+    
+    console.log('🧹 Após limpeza inicial:', cleanName);
+    
+    // Dividir em palavras e filtrar
+    const words = cleanName.split(' ')
+      .map(word => word.toLowerCase().trim())
+      .filter(word => 
+        word.length > 2 && // Palavras com mais de 2 caracteres
+        !commonBrands.includes(word) && // Não é marca conhecida
+        !wordsToIgnore.includes(word) && // Não é palavra a ignorar
+        !/^\d+$/.test(word) // Não é apenas números
+      );
+    
+    console.log('🔤 Palavras filtradas:', words);
+    
+    // Pegar a primeira palavra significativa
+    const genericName = words[0] || fullName.split(' ')[0] || '';
+    
+    // Capitalizar primeira letra
+    const result = genericName.charAt(0).toUpperCase() + genericName.slice(1).toLowerCase();
+    
+    console.log('✅ Nome genérico extraído:', result);
+    
+    return result;
+  };
+
   // Validar formulário
   const isFormValid = productName.trim().length > 0 && 
     (scannedBarcode ? selectedGenericProduct !== null : true);
@@ -373,7 +428,7 @@ export default function NewProduct() {
           setSelectedGenericProduct(product);
           setShowGenericProductSelector(false);
         }}
-        searchQuery={productName}
+        searchQuery={scannedBarcode ? extractFirstProductName(productName) : productName}
       />
 
       <Toast
