@@ -17,6 +17,7 @@ import type { SpecificProduct, GenericProduct } from '../lib/supabase';
 import SimpleBarcodeScanner from './SimpleBarcodeScanner';
 import ScanResultModal from './ScanResultModal';
 import GenericProductSelector from './GenericProductSelector';
+import ProductCreationModal from './ProductCreationModal';
 
 import { BarcodeService, ProductInfo, BarcodeResult, GenericProductMatcher, SpecificProductCreationService } from '../lib/barcode';
 import { ProductService } from '../lib/products';
@@ -27,8 +28,8 @@ interface AddProductInterfaceProps {
   onSelectProduct: (product: SpecificProduct, quantity: number, unit: string) => Promise<void>;
   onSelectGenericProduct: (product: GenericProduct, quantity: number, unit: string) => Promise<void>;
   onCreateNewProduct: (productName: string, quantity: number, unit: string) => Promise<void>;
+  onCreateNewProductWithCategory: (productName: string, categoryId: string | null, quantity: number, unit: string) => Promise<void>;
   suggestions: SpecificProduct[];
-  frequentProducts: SpecificProduct[];
   loading: boolean;
   currentListProductIds?: string[]; // IDs dos produtos já na lista atual
   currentListProductNames?: string[]; // Nomes dos produtos já na lista atual
@@ -43,8 +44,8 @@ export default function AddProductInterface({
   onSelectProduct,
   onSelectGenericProduct,
   onCreateNewProduct,
+  onCreateNewProductWithCategory,
   suggestions,
-  frequentProducts,
   loading,
   currentListProductIds = [],
   currentListProductNames = [],
@@ -73,6 +74,9 @@ export default function AddProductInterface({
   const [genericProducts, setGenericProducts] = useState<GenericProduct[]>([]);
   const [genericSelectorMultiMode, setGenericSelectorMultiMode] = useState(false);
   
+  // Product creation modal states
+  const [showProductCreationModal, setShowProductCreationModal] = useState(false);
+  const [productToCreate, setProductToCreate] = useState('');
 
   const inputRef = useRef<TextInput>(null);
 
@@ -120,27 +124,28 @@ export default function AddProductInterface({
   const handleAddProduct = async () => {
     if (!productName.trim()) return;
 
-    const qty = parseFloat(quantity) || 1;
-    
     // Verifica se é um produto existente nas sugestões
     const existingProduct = filteredSuggestions.find(
       p => p.name.toLowerCase() === productName.toLowerCase()
     );
 
-    try {
-      if (existingProduct) {
+    if (existingProduct) {
+      // Se é um produto existente, adiciona diretamente
+      const qty = parseFloat(quantity) || 1;
+      try {
         await onSelectProduct(existingProduct, qty, selectedUnit);
-      } else {
-        await onCreateNewProduct(productName.trim(), qty, selectedUnit);
+        // Limpar campos após adicionar
+        setProductName('');
+        setQuantity('1');
+        setSelectedUnit('un');
+        Keyboard.dismiss();
+      } catch (error) {
+        console.error('Erro ao adicionar produto:', error);
       }
-      
-      // Limpar campos após adicionar
-      setProductName('');
-      setQuantity('1');
-      setSelectedUnit('un');
-      Keyboard.dismiss();
-    } catch (error) {
-      console.error('Erro ao adicionar produto:', error);
+    } else {
+      // Se é um produto novo, abre o modal para escolher categoria e unidade
+      setProductToCreate(productName.trim());
+      setShowProductCreationModal(true);
     }
   };
 
@@ -158,14 +163,7 @@ export default function AddProductInterface({
     }
   };
 
-  const handleFrequentProductPress = async (product: SpecificProduct) => {
-    const qty = parseFloat(quantity) || 1;
-    try {
-      await onSelectProduct(product, qty, selectedUnit);
-    } catch (error) {
-      console.error('Erro ao adicionar produto frequente:', error);
-    }
-  };
+
 
   // Scanner functions
   const handleOpenScanner = () => {
@@ -433,7 +431,27 @@ export default function AddProductInterface({
     }
   };
 
+  // Product creation modal functions
+  const handleProductCreationConfirm = async (productName: string, categoryId: string | null, unit: string, quantity: number) => {
+    try {
+      await onCreateNewProductWithCategory(productName, categoryId, quantity, unit);
+      
+      // Fechar modal e limpar campos
+      setShowProductCreationModal(false);
+      setProductToCreate('');
+      setProductName('');
+      setQuantity('1');
+      setSelectedUnit('un');
+      Keyboard.dismiss();
+    } catch (error) {
+      console.error('Erro ao criar produto:', error);
+    }
+  };
 
+  const handleProductCreationCancel = () => {
+    setShowProductCreationModal(false);
+    setProductToCreate('');
+  };
 
   const renderSuggestion = ({ item }: { item: SpecificProduct }) => (
     <TouchableOpacity
@@ -446,14 +464,7 @@ export default function AddProductInterface({
     </TouchableOpacity>
   );
 
-  const renderFrequentProduct = ({ item }: { item: SpecificProduct }) => (
-    <TouchableOpacity
-      style={styles.frequentProductChip}
-      onPress={() => handleFrequentProductPress(item)}
-    >
-      <Text style={styles.frequentProductText}>{item.name}</Text>
-    </TouchableOpacity>
-  );
+
 
   const renderProductItem = ({ item }: { item: SpecificProduct }) => (
     <TouchableOpacity
@@ -478,21 +489,6 @@ export default function AddProductInterface({
 
   return (
     <View style={styles.container}>
-      {/* Produtos Frequentes */}
-      {frequentProducts.length > 0 && (
-        <View style={styles.frequentSection}>
-          <Text style={styles.sectionTitle}>Produtos frequentes</Text>
-          <FlatList
-            data={frequentProducts.slice(0, 5)}
-            renderItem={renderFrequentProduct}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.frequentList}
-          />
-        </View>
-      )}
-
       {/* Interface Principal */}
       <View style={styles.mainInterface}>
         <View style={styles.inputContainer}>
@@ -660,6 +656,14 @@ export default function AddProductInterface({
         listId={listId}
       />
 
+      {/* Product Creation Modal */}
+      <ProductCreationModal
+        visible={showProductCreationModal}
+        onClose={handleProductCreationCancel}
+        onConfirm={handleProductCreationConfirm}
+        productName={productToCreate}
+        loading={loading}
+      />
 
     </View>
   );
@@ -673,32 +677,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  frequentSection: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-  },
-  frequentList: {
-    paddingRight: 16,
-  },
-  frequentProductChip: {
-    backgroundColor: '#f0f8f1',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#4CAF50',
-  },
-  frequentProductText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '500',
-  },
+
   mainInterface: {
     backgroundColor: '#f8f9fa',
     borderRadius: 12,

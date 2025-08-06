@@ -58,7 +58,6 @@ export default function ListDetail() {
   const [refreshing, setRefreshing] = useState(false);
   const [addingItem, setAddingItem] = useState(false);
   const [suggestions, setSuggestions] = useState<SpecificProduct[]>([]);
-  const [frequentProducts, setFrequentProducts] = useState<SpecificProduct[]>([]);
   const [priceModalVisible, setPriceModalVisible] = useState(false);
   const [priceEditModalVisible, setPriceEditModalVisible] = useState(false);
   const [substitutionModalVisible, setSubstitutionModalVisible] = useState(false);
@@ -209,14 +208,11 @@ export default function ListDetail() {
   useEffect(() => {
     fetchListDetails();
     loadSuggestions();
-    loadFrequentProducts();
   }, [id]);
 
   // Reorganizar itens quando a lista mudar
   useEffect(() => {
     organizeItems(items);
-    // Atualizar produtos frequentes quando a lista de itens mudar
-    loadFrequentProducts();
   }, [items]);
 
   // Detectar se deve abrir o GenericProductSelector automaticamente após criar produto
@@ -259,26 +255,7 @@ export default function ListDetail() {
     }
   };
 
-  // Carregar produtos mais usados
-  const loadFrequentProducts = async () => {
-    try {
-      const { data } = await ProductService.getMostUsedProducts(10); // Busca mais para filtrar
-      if (data) {
-        // Filtrar produtos que já estão na lista atual
-        const currentProductIds = items
-          .filter(item => item.product_id)
-          .map(item => item.product_id);
-        
-        const filteredProducts = data
-          .filter(product => !currentProductIds.includes(product.id))
-          .slice(0, 5); // Limita a 5 produtos após filtrar
-        
-        setFrequentProducts(filteredProducts);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar produtos frequentes:', error);
-    }
-  };
+
 
   // Função para atualizar a lista (pull-to-refresh)
   const handleRefresh = () => {
@@ -384,8 +361,6 @@ export default function ListDetail() {
             return newSet;
           });
         }, 2000);
-        // Recarrega produtos frequentes
-        loadFrequentProducts();
       }
     } catch (error) {
       console.error('Erro ao adicionar item:', error);
@@ -509,14 +484,6 @@ export default function ListDetail() {
             return newSet;
           });
         }, 2000);
-        
-        // Remove o produto da lista de produtos frequentes localmente
-        setFrequentProducts(prevFrequent => 
-          prevFrequent.filter(fp => fp.id !== product.id)
-        );
-        
-        // Recarrega produtos frequentes para sincronizar com o servidor
-        loadFrequentProducts();
       }
     } catch (error) {
       console.error('Erro ao adicionar produto:', error);
@@ -608,12 +575,98 @@ export default function ListDetail() {
           });
         }, 2000);
         
-        // Atualiza sugestões e produtos frequentes
+        // Atualiza sugestões
         loadSuggestions();
-        loadFrequentProducts();
       }
     } catch (error) {
       console.error('Erro ao criar e adicionar produto:', error);
+      throw error;
+    } finally {
+      setAddingItem(false);
+    }
+  };
+
+  // Função para criar um novo produto genérico com categoria e adicioná-lo à lista
+  const handleCreateNewProductWithCategory = async (productName: string, categoryId: string | null, quantity: number, unit: string) => {
+    try {
+      // Verificar se produto já existe
+      if (checkDuplicateProduct(productName)) {
+        Alert.alert(
+          'Produto já existe',
+          `"${productName}" já está na sua lista. Deseja aumentar a quantidade?`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { 
+              text: 'Aumentar Quantidade', 
+              onPress: () => increaseProductQuantity(productName, quantity)
+            }
+          ]
+        );
+        return;
+      }
+
+      setAddingItem(true);
+      
+      // Criar apenas o produto genérico
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) {
+        Alert.alert('Erro', 'Usuário não autenticado');
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
+        name: productName,
+        category_id: categoryId, // Usa a categoria selecionada pelo usuário
+        user_id: user.user.id,
+      });
+
+      if (genericError || !genericProduct) {
+        Alert.alert('Erro', 'Não foi possível criar o produto genérico');
+        throw genericError;
+      }
+
+      // Adicionar o produto genérico diretamente à lista
+      const { data, error } = await ListsService.addListItem(id, {
+        product_name: productName,
+        quantity: quantity,
+        unit: unit,
+        checked: false,
+        generic_product_id: genericProduct.id, // Passa o ID do produto genérico
+      });
+
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível adicionar o produto à lista');
+        throw error;
+      } else if (data) {
+        // Adiciona o novo item à lista local com informações genéricas
+        const genericItem = {
+          ...data,
+          product_name: productName,
+          generic_product_id: genericProduct.id,
+          generic_product_name: productName,
+          category: genericProduct.category,
+          is_generic: true,
+        };
+        setItems(prevItems => [...prevItems, genericItem]);
+        
+        // Marca o item como recém-adicionado para animação
+        setNewlyAddedItems(prev => new Set(prev).add(data.id));
+        // Adiciona à fila de navegação
+        addToScrollQueue(data.id);
+        // Remove a marcação após 2 segundos
+        setTimeout(() => {
+          setNewlyAddedItems(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.id);
+            return newSet;
+          });
+        }, 2000);
+        
+        // Atualiza sugestões
+        loadSuggestions();
+      }
+    } catch (error) {
+      console.error('Erro ao criar e adicionar produto genérico com categoria:', error);
       throw error;
     } finally {
       setAddingItem(false);
@@ -1005,8 +1058,8 @@ export default function ListDetail() {
         onSelectProduct={handleSelectProduct}
         onSelectGenericProduct={handleSelectGenericProduct}
         onCreateNewProduct={handleCreateNewProduct}
+        onCreateNewProductWithCategory={handleCreateNewProductWithCategory}
         suggestions={suggestions}
-        frequentProducts={frequentProducts}
         loading={addingItem}
         currentListProductIds={items.filter(item => item.product_id).map(item => item.product_id!)}
         currentListProductNames={items.map(item => item.product_name)}
