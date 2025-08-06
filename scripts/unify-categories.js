@@ -3,29 +3,100 @@
  * Execute com: node scripts/unify-categories.js
  */
 
-const { CategoryUnificationService } = require('../lib/unify-categories');
+const readline = require('readline');
+const { 
+  CategoryUnificationService, 
+  generateCategoryReport, 
+  verifyCategoryIntegrity 
+} = require('../lib/unify-categories');
+
+// Interface para input do usuário
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+function askQuestion(question) {
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      resolve(answer);
+    });
+  });
+}
 
 async function main() {
-  console.log('🚀 Iniciando unificação de categorias...\n');
+  console.log('🚀 Script de Unificação de Categorias\n');
   
   try {
-    // Primeiro executar em modo simulação
-    console.log('=== MODO SIMULAÇÃO ===');
-    await CategoryUnificationService.cleanupCategories(true);
+    // Menu de opções
+    console.log('Escolha uma opção:');
+    console.log('1. Gerar relatório detalhado');
+    console.log('2. Executar simulação completa');
+    console.log('3. Executar unificação real');
+    console.log('4. Verificar integridade');
+    console.log('5. Executar tudo (relatório + simulação + confirmação)');
     
-    console.log('\n' + '='.repeat(50));
-    console.log('Deseja executar a unificação real? (y/N)');
+    const choice = await askQuestion('\nDigite sua escolha (1-5): ');
     
-    // Em um ambiente real, você poderia usar readline para confirmação
-    // Por enquanto, descomente a linha abaixo para executar
-    // await CategoryUnificationService.cleanupCategories(false);
+    switch (choice.trim()) {
+      case '1':
+        console.log('\n=== RELATÓRIO DETALHADO ===');
+        await generateCategoryReport();
+        break;
+        
+      case '2':
+        console.log('\n=== SIMULAÇÃO COMPLETA ===');
+        await CategoryUnificationService.cleanupCategories(true);
+        break;
+        
+      case '3':
+        console.log('\n⚠️  ATENÇÃO: Esta operação irá modificar o banco de dados!');
+        const confirmReal = await askQuestion('Tem certeza? Digite "CONFIRMO" para continuar: ');
+        
+        if (confirmReal.trim() === 'CONFIRMO') {
+          console.log('\n=== EXECUÇÃO REAL ===');
+          await CategoryUnificationService.cleanupCategories(false);
+        } else {
+          console.log('❌ Operação cancelada');
+        }
+        break;
+        
+      case '4':
+        console.log('\n=== VERIFICAÇÃO DE INTEGRIDADE ===');
+        await verifyCategoryIntegrity();
+        break;
+        
+      case '5':
+        // Fluxo completo
+        console.log('\n=== 1/4: RELATÓRIO DETALHADO ===');
+        await generateCategoryReport();
+        
+        console.log('\n=== 2/4: SIMULAÇÃO COMPLETA ===');
+        await CategoryUnificationService.cleanupCategories(true);
+        
+        console.log('\n=== 3/4: CONFIRMAÇÃO ===');
+        const confirmFull = await askQuestion('Deseja executar a unificação real? (y/N): ');
+        
+        if (confirmFull.toLowerCase() === 'y' || confirmFull.toLowerCase() === 'yes') {
+          console.log('\n=== 4/4: EXECUÇÃO REAL ===');
+          await CategoryUnificationService.cleanupCategories(false);
+        } else {
+          console.log('✅ Simulação concluída. Execução real cancelada.');
+        }
+        break;
+        
+      default:
+        console.log('❌ Opção inválida');
+        break;
+    }
     
     console.log('\n✅ Script concluído!');
-    console.log('💡 Para executar de verdade, descomente a linha no script');
     
   } catch (error) {
     console.error('❌ Erro:', error);
     process.exit(1);
+  } finally {
+    rl.close();
   }
 }
 

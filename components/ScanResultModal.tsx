@@ -148,7 +148,9 @@ export default function ScanResultModal({
     const cleanedProduct = {
       ...editedProduct,
       name: editedProduct.name.trim(),
-      brand: editedProduct.brand?.trim() || undefined,
+      brand: typeof editedProduct.brand === 'string' ? 
+             (editedProduct.brand.trim() || undefined) : 
+             (editedProduct.brand?.name?.trim() || undefined),
       category: editedProduct.category?.trim() || undefined,
       description: editedProduct.description?.trim() || undefined,
     };
@@ -173,9 +175,14 @@ export default function ScanResultModal({
   const hasChanges = (): boolean => {
     if (!productInfo || !editedProduct) return false;
     
+    const originalBrand = typeof productInfo.brand === 'string' ? productInfo.brand : 
+                         (productInfo.brand?.name || '');
+    const editedBrand = typeof editedProduct.brand === 'string' ? editedProduct.brand : 
+                       (editedProduct.brand?.name || '');
+    
     return (
       productInfo.name !== editedProduct.name ||
-      productInfo.brand !== editedProduct.brand ||
+      originalBrand !== editedBrand ||
       productInfo.category !== editedProduct.category ||
       productInfo.description !== editedProduct.description
     );
@@ -190,8 +197,13 @@ export default function ScanResultModal({
       changes.push(`Nome alterado de "${productInfo.name || 'Não informado'}" para "${editedProduct.name}"`);
     }
     
-    if (productInfo.brand !== editedProduct.brand) {
-      changes.push(`Marca alterada de "${productInfo.brand || 'Não informada'}" para "${editedProduct.brand || 'Não informada'}"`);
+    const originalBrand = typeof productInfo.brand === 'string' ? productInfo.brand : 
+                         (productInfo.brand?.name || '');
+    const editedBrand = typeof editedProduct.brand === 'string' ? editedProduct.brand : 
+                       (editedProduct.brand?.name || '');
+    
+    if (originalBrand !== editedBrand) {
+      changes.push(`Marca alterada de "${originalBrand || 'Não informada'}" para "${editedBrand || 'Não informada'}"`);
     }
     
     if (productInfo.category !== editedProduct.category) {
@@ -303,7 +315,8 @@ export default function ScanResultModal({
               {isEditing ? (
                 <TextInput
                   style={styles.editInput}
-                  value={editedProduct.brand || ''}
+                  value={typeof editedProduct.brand === 'string' ? editedProduct.brand : 
+                         (editedProduct.brand?.name || '')}
                   onChangeText={(text) => 
                     setEditedProduct({ ...editedProduct, brand: text })
                   }
@@ -311,7 +324,8 @@ export default function ScanResultModal({
                 />
               ) : (
                 <Text style={styles.infoValue}>
-                  {editedProduct.brand || 'Marca não identificada'}
+                  {typeof editedProduct.brand === 'string' ? editedProduct.brand : 
+                   (editedProduct.brand?.name || 'Marca não identificada')}
                 </Text>
               )}
             </View>

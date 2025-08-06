@@ -219,6 +219,7 @@ export const BarcodeCacheService = {
         console.log('Cache hit: local cache');
         // Normalize brand data before returning
         const normalizedResult = this.normalizeBrandData(localResult);
+        console.log('Dados normalizados do cache local:', JSON.stringify(normalizedResult, null, 2));
         await this.updateAccessStats(barcode, 'local');
         return { data: normalizedResult, error: null };
       }
@@ -961,6 +962,91 @@ export const BarcodeCacheService = {
     } catch (error) {
       console.error('Error getting performance metrics:', error);
       return null;
+    }
+  },
+
+  /**
+   * Limpa dados de marca inválidos do cache (one-time cleanup)
+   */
+  cleanInvalidBrandData: async (): Promise<void> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        return;
+      }
+
+      // Get all cache entries
+      const { data: cacheEntries, error } = await supabase
+        .from('barcode_cache')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (error || !cacheEntries) {
+        return;
+      }
+
+      // Find entries with invalid brand data
+      const invalidEntries = cacheEntries.filter(entry => {
+        try {
+          const productData = JSON.parse(entry.product_data);
+          return productData.brand && typeof productData.brand === 'object';
+        } catch {
+          return false;
+        }
+      });
+
+      // Update invalid entries
+      for (const entry of invalidEntries) {
+        try {
+          const productData = JSON.parse(entry.product_data);
+          
+          // Fix brand data
+          if (productData.brand && typeof productData.brand === 'object' && productData.brand.name) {
+            productData.brand = productData.brand.name;
+            
+            // Update the cache entry
+            await supabase
+              .from('barcode_cache')
+              .update({ 
+                product_data: JSON.stringify(productData),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', entry.id);
+              
+            console.log(`Fixed brand data for barcode: ${entry.barcode}`);
+          }
+        } catch (error) {
+          console.error(`Error fixing brand data for entry ${entry.id}:`, error);
+        }
+      }
+
+      // Also clean local cache
+      try {
+        const localCacheData = await AsyncStorage.getItem(CACHE_CONFIG.LOCAL_CACHE_KEY);
+        if (localCacheData) {
+          const localCache = JSON.parse(localCacheData);
+          let hasChanges = false;
+          
+          Object.keys(localCache).forEach(barcode => {
+            const item = localCache[barcode];
+            if (item.data && item.data.brand && typeof item.data.brand === 'object' && item.data.brand.name) {
+              item.data.brand = item.data.brand.name;
+              hasChanges = true;
+            }
+          });
+          
+          if (hasChanges) {
+            await AsyncStorage.setItem(CACHE_CONFIG.LOCAL_CACHE_KEY, JSON.stringify(localCache));
+            console.log('Fixed brand data in local cache');
+          }
+        }
+      } catch (error) {
+        console.error('Error cleaning local cache brand data:', error);
+      }
+      
+    } catch (error) {
+      console.error('Error during brand data cleanup:', error);
     }
   }
 };

@@ -283,8 +283,9 @@ export class BarcodeValidator {
   }
 }
 
-import { supabase, SpecificProduct, GenericProduct, BarcodeCache } from './supabase';
+import { supabase, SpecificProduct, GenericProduct } from './supabase';
 import { ProductService } from './products';
+import * as BarcodeCache from './barcodeCache';
 
 // Interfaces para o BarcodeService
 export interface ProductInfo {
@@ -954,7 +955,7 @@ export class BarcodeService {
       for (const promiseResult of upcItemResults) {
         if (promiseResult.status === 'fulfilled' && promiseResult.value.result) {
           const { barcode, result } = promiseResult.value;
-          results[barcode] = result;
+          results[barcode] = { found: true, product: result };
           await this.cacheProduct(barcode, result);
         } else {
           // Se houve erro na busca, adicionar à lista para tentar na Cosmos
@@ -1129,7 +1130,7 @@ export class BarcodeService {
 interface CosmosApiResponse {
   gtin: string;
   description: string;
-  brand: string;
+  brand: string | { name: string; picture?: string } | null;
   ncm: string;
   tax_info?: {
     icms: number;
@@ -1249,10 +1250,18 @@ export class CosmosService {
    * Transforma dados da API Cosmos para ProductInfo
    */
   private static transformCosmosToProductInfo(cosmosData: CosmosApiResponse, gtin: string): ProductInfo {
+    // Normalizar a marca - pode vir como string ou objeto {name, picture}
+    let brandName: string | undefined;
+    if (typeof cosmosData.brand === 'string') {
+      brandName = cosmosData.brand || undefined;
+    } else if (cosmosData.brand && typeof cosmosData.brand === 'object' && 'name' in cosmosData.brand) {
+      brandName = (cosmosData.brand as any).name || undefined;
+    }
+
     const productInfo: ProductInfo = {
       barcode: gtin,
       name: cosmosData.description,
-      brand: cosmosData.brand?.name || undefined,
+      brand: brandName,
       category: this.mapCosmosCategory(cosmosData.category),
       image: cosmosData.image_url || cosmosData.thumbnail,
       source: 'cosmos',

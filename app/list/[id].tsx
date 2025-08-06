@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ListsService } from '../../lib/lists';
 import { ProductService, getCategoryNameById } from '../../lib/products';
@@ -11,6 +11,7 @@ import PriceEditModal from '../../components/PriceEditModal';
 import ProductSubstitutionModal from '../../components/ProductSubstitutionModal';
 import QuantitySelector from '../../components/QuantitySelector';
 import SafeContainer from '../../components/SafeContainer';
+import AnimatedListItem from '../../components/AnimatedListItem';
 import { supabase } from '../../lib/supabase';
 import type { SpecificProduct, GenericProduct } from '../../lib/supabase';
 
@@ -63,7 +64,44 @@ export default function ListDetail() {
   const [substitutionModalVisible, setSubstitutionModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ListItem | null>(null);
   const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
+  const [newlyAddedItems, setNewlyAddedItems] = useState<Set<string>>(new Set());
+  const [scrollQueue, setScrollQueue] = useState<string[]>([]);
+  const flatListRef = useRef<FlatList>(null);
   const router = useRouter();
+
+  // Função para navegar para um item específico na lista
+  const scrollToItem = (itemId: string) => {
+    if (!flatListRef.current) return;
+    
+    // Como estamos usando ListHeaderComponent com renderização manual,
+    // vamos navegar para o topo onde ficam os itens pendentes
+    flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+  };
+
+  // Função para processar a fila de navegação sequencial
+  const processScrollQueue = () => {
+    if (scrollQueue.length > 0) {
+      const nextItemId = scrollQueue[0];
+      scrollToItem(nextItemId);
+      
+      // Remove o item da fila após 1.5 segundos e processa o próximo
+      setTimeout(() => {
+        setScrollQueue(prev => prev.slice(1));
+      }, 1500);
+    }
+  };
+
+  // Effect para processar a fila de navegação
+  useEffect(() => {
+    if (scrollQueue.length > 0) {
+      processScrollQueue();
+    }
+  }, [scrollQueue]);
+
+  // Função para adicionar item à fila de navegação
+  const addToScrollQueue = (itemId: string) => {
+    setScrollQueue(prev => [...prev, itemId]);
+  };
 
   // Função para buscar detalhes da lista
   const fetchListDetails = async () => {
@@ -121,7 +159,7 @@ export default function ListDetail() {
     const groups: { [key: string]: ListItem[] } = {};
     
     items.forEach(item => {
-      const category = (item.category || getCategoryNameById(item.category_id)) || 'Sem categoria';
+      const category = item.category || 'Sem categoria';
       if (!groups[category]) {
         groups[category] = [];
       }
@@ -334,6 +372,18 @@ export default function ListDetail() {
       } else if (data) {
         // Adiciona o novo item à lista local
         setItems(prevItems => [...prevItems, data]);
+        // Marca o item como recém-adicionado para animação
+        setNewlyAddedItems(prev => new Set(prev).add(data.id));
+        // Adiciona à fila de navegação
+        addToScrollQueue(data.id);
+        // Remove a marcação após 2 segundos
+        setTimeout(() => {
+          setNewlyAddedItems(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.id);
+            return newSet;
+          });
+        }, 2000);
         // Recarrega produtos frequentes
         loadFrequentProducts();
       }
@@ -388,6 +438,19 @@ export default function ListDetail() {
         };
         setItems(prevItems => [...prevItems, genericItem]);
         
+        // Marca o item como recém-adicionado para animação
+        setNewlyAddedItems(prev => new Set(prev).add(data.id));
+        // Adiciona à fila de navegação
+        addToScrollQueue(data.id);
+        // Remove a marcação após 2 segundos
+        setTimeout(() => {
+          setNewlyAddedItems(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.id);
+            return newSet;
+          });
+        }, 2000);
+        
         // Recarrega produtos frequentes
         loadFrequentProducts();
       }
@@ -433,6 +496,19 @@ export default function ListDetail() {
       } else if (data) {
         // Adiciona o novo item à lista local
         setItems(prevItems => [...prevItems, data]);
+        
+        // Marca o item como recém-adicionado para animação
+        setNewlyAddedItems(prev => new Set(prev).add(data.id));
+        // Adiciona à fila de navegação
+        addToScrollQueue(data.id);
+        // Remove a marcação após 2 segundos
+        setTimeout(() => {
+          setNewlyAddedItems(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.id);
+            return newSet;
+          });
+        }, 2000);
         
         // Remove o produto da lista de produtos frequentes localmente
         setFrequentProducts(prevFrequent => 
@@ -518,6 +594,20 @@ export default function ListDetail() {
       } else if (data) {
         // Adiciona o novo item à lista local
         setItems(prevItems => [...prevItems, data]);
+        
+        // Marca o item como recém-adicionado para animação
+        setNewlyAddedItems(prev => new Set(prev).add(data.id));
+        // Adiciona à fila de navegação
+        addToScrollQueue(data.id);
+        // Remove a marcação após 2 segundos
+        setTimeout(() => {
+          setNewlyAddedItems(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.id);
+            return newSet;
+          });
+        }, 2000);
+        
         // Atualiza sugestões e produtos frequentes
         loadSuggestions();
         loadFrequentProducts();
@@ -686,47 +776,6 @@ export default function ListDetail() {
     }
   };
 
-  // Função para confirmar edição de preço
-  const handleConfirmPriceEdit = async (price: number | null) => {
-    if (!selectedItem) return;
-
-    try {
-      const updates = { price };
-      
-      const { error } = await ListsService.updateListItem(id, selectedItem.id, updates);
-      
-      if (error) {
-        Alert.alert('Erro', 'Não foi possível atualizar o preço');
-        throw error;
-      } else {
-        // Atualiza o item na lista local
-        setItems(prevItems =>
-          prevItems.map(i => (i.id === selectedItem.id ? { ...i, ...updates } : i))
-        );
-      }
-    } catch (error) {
-      console.error('Erro ao editar preço:', error);
-      throw error;
-    }
-  };
-
-  // Função para remover um item da lista
-  const handleRemoveItem = async (itemId: string) => {
-    try {
-      const { error } = await ListsService.removeListItem(id, itemId);
-      
-      if (error) {
-        Alert.alert('Erro', 'Não foi possível remover o item');
-      } else {
-        // Remove o item da lista local
-        setItems(prevItems => prevItems.filter(item => item.id !== itemId));
-      }
-    } catch (error) {
-      console.error('Erro ao remover item:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao remover o item');
-    }
-  };
-
   // Função para aumentar quantidade de um item
   const handleIncreaseQuantity = async (item: ListItem) => {
     try {
@@ -779,19 +828,74 @@ export default function ListDetail() {
     }
   };
 
+
+
+  // Função para confirmar edição de preço
+  const handleConfirmPriceEdit = async (price: number | null) => {
+    if (!selectedItem) return;
+
+    try {
+      const updates = { price };
+      
+      const { error } = await ListsService.updateListItem(id, selectedItem.id, updates);
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar o preço');
+        throw error;
+      } else {
+        // Atualiza o item na lista local
+        setItems(prevItems =>
+          prevItems.map(i => (i.id === selectedItem.id ? { ...i, ...updates } : i))
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao editar preço:', error);
+      throw error;
+    }
+  };
+
+  // Função para remover um item da lista
+  const handleRemoveItem = async (itemId: string) => {
+    try {
+      const { error } = await ListsService.removeListItem(id, itemId);
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível remover o item');
+      } else {
+        // Remove o item da lista local
+        setItems(prevItems => prevItems.filter(item => item.id !== itemId));
+      }
+    } catch (error) {
+      console.error('Erro ao remover item:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao remover o item');
+    }
+  };
+
+
+
   // Renderizar cada item da lista
   const renderItem = ({ item }: { item: ListItem }) => (
-    <View style={[styles.itemContainer, item.checked && styles.itemChecked]}>
-      <TouchableOpacity 
-        style={styles.checkBox} 
-        onPress={() => handleToggleItem(item)}
-      >
-        <Ionicons 
-          name={item.checked ? 'checkbox' : 'square-outline'} 
-          size={24} 
-          color={item.checked ? '#4CAF50' : '#666'} 
-        />
-      </TouchableOpacity>
+    <AnimatedListItem 
+      isNew={newlyAddedItems.has(item.id)}
+      onAnimationComplete={() => {
+        setNewlyAddedItems(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(item.id);
+          return newSet;
+        });
+      }}
+    >
+      <View style={[styles.itemContainer, item.checked && styles.itemChecked]}>
+        <TouchableOpacity 
+          style={styles.checkBox} 
+          onPress={() => handleToggleItem(item)}
+        >
+          <Ionicons 
+            name={item.checked ? 'checkbox' : 'square-outline'} 
+            size={24} 
+            color={item.checked ? '#4CAF50' : '#666'} 
+          />
+        </TouchableOpacity>
       
       <View style={styles.itemInfo}>
         <View style={styles.itemNameContainer}>
@@ -865,7 +969,8 @@ export default function ListDetail() {
           <Ionicons name="trash-outline" size={20} color="#ff6b6b" />
         </TouchableOpacity>
       </View>
-    </View>
+      </View>
+    </AnimatedListItem>
   );
 
   if (loading && !refreshing) {
@@ -947,6 +1052,8 @@ export default function ListDetail() {
         currentProductName={selectedItem?.product_name || ''}
       />
 
+
+
       {items.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="basket-outline" size={64} color="#ccc" />
@@ -955,6 +1062,7 @@ export default function ListDetail() {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={[]}
           renderItem={() => null}
           keyExtractor={() => ''}
@@ -1148,10 +1256,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 8,
   },
+  quantityText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginRight: 4,
+  },
   unitText: {
     fontSize: 14,
     color: '#666',
-    marginLeft: 8,
   },
   itemQuantity: {
     fontSize: 14,

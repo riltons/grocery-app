@@ -103,6 +103,94 @@ const CATEGORY_MAPPINGS: CategoryMapping[] = [
 export class CategoryUnificationService {
   
   /**
+   * Gera relatório detalhado de categorias duplicadas (equivalente ao SQL STRING_AGG)
+   */
+  static async generateDuplicateReport() {
+    try {
+      console.log('📊 Gerando relatório detalhado de categorias duplicadas...');
+      
+      const { data: categories, error } = await supabase
+        .from('categories')
+        .select(`
+          id, 
+          name, 
+          icon, 
+          color, 
+          created_at,
+          generic_products!inner(id)
+        `)
+        .order('name');
+      
+      if (error) {
+        throw error;
+      }
+      
+      // Agrupar por nome normalizado
+      const groupedCategories: { [key: string]: any[] } = {};
+      
+      categories?.forEach(cat => {
+        const normalizedName = cat.name.toLowerCase().trim();
+        if (!groupedCategories[normalizedName]) {
+          groupedCategories[normalizedName] = [];
+        }
+        groupedCategories[normalizedName].push(cat);
+      });
+      
+      // Encontrar duplicatas
+      const duplicateReport: any[] = [];
+      
+      for (const [normalizedName, cats] of Object.entries(groupedCategories)) {
+        if (cats.length > 1) {
+          // Contar produtos para cada categoria
+          const categoriesWithCount = await Promise.all(
+            cats.map(async (cat) => {
+              const { count } = await supabase
+                .from('generic_products')
+                .select('id', { count: 'exact' })
+                .eq('category_id', cat.id);
+              
+              return { ...cat, productCount: count || 0 };
+            })
+          );
+          
+          duplicateReport.push({
+            normalizedName,
+            categoryCount: cats.length,
+            variations: cats.map(c => c.name).join(', '),
+            categoryIds: cats.map(c => c.id).join(', '),
+            totalProducts: categoriesWithCount.reduce((sum, c) => sum + c.productCount, 0),
+            categories: categoriesWithCount
+          });
+        }
+      }
+      
+      // Ordenar por número de categorias duplicadas
+      duplicateReport.sort((a, b) => b.categoryCount - a.categoryCount);
+      
+      console.log('\n📋 Relatório de Categorias Duplicadas:');
+      console.log('=' .repeat(60));
+      
+      duplicateReport.forEach(report => {
+        console.log(`\n🔍 ${report.normalizedName.toUpperCase()}`);
+        console.log(`   Variações: ${report.variations}`);
+        console.log(`   Total de categorias: ${report.categoryCount}`);
+        console.log(`   Total de produtos: ${report.totalProducts}`);
+        console.log(`   IDs: ${report.categoryIds}`);
+        
+        report.categories.forEach((cat: any) => {
+          console.log(`   - ${cat.name} (${cat.id}): ${cat.productCount} produtos`);
+        });
+      });
+      
+      return duplicateReport;
+      
+    } catch (error) {
+      console.error('❌ Erro ao gerar relatório:', error);
+      throw error;
+    }
+  }
+  
+  /**
    * Analisa categorias duplicadas no banco de dados
    */
   static async analyzeDuplicateCategories() {
@@ -353,17 +441,100 @@ export class CategoryUnificationService {
   }
   
   /**
+   * Verifica integridade das categorias após unificação
+   */
+  static async verifyIntegrity() {
+    try {
+      console.log('🔍 Verificando integridade das categorias...');
+      
+      // 1. Verificar categorias órfãs
+      const { data: orphanCategories, error: orphanError } = await supabase
+        .from('categories')
+        .select(`
+          id, 
+          name,
+          generic_products!left(id)
+        `)
+        .is('generic_products.id', null);
+      
+      if (orphanError) {
+        throw orphanError;
+      }
+      
+      // 2. Verificar produtos sem categoria
+      const { data: orphanProducts, error: productError } = await supabase
+        .from('generic_products')
+        .select('id, name')
+        .is('category_id', null);
+      
+      if (productError) {
+        throw productError;
+      }
+      
+      // 3. Verificar possíveis duplicatas restantes
+      const duplicateReport = await this.generateDuplicateReport();
+      
+      console.log('\n📊 Relatório de Integridade:');
+      console.log(`  Categorias órfãs: ${orphanCategories?.length || 0}`);
+      console.log(`  Produtos sem categoria: ${orphanProducts?.length || 0}`);
+      console.log(`  Possíveis duplicatas: ${duplicateReport.length}`);
+      
+      if (orphanCategories?.length) {
+        console.log('\n🚨 Categorias órfãs encontradas:');
+        orphanCategories.forEach(cat => {
+          console.log(`  - ${cat.name} (${cat.id})`);
+        });
+      }
+      
+      if (orphanProducts?.length) {
+        console.log('\n🚨 Produtos sem categoria:');
+        orphanProducts.forEach(product => {
+          console.log(`  - ${product.name} (${product.id})`);
+        });
+      }
+      
+      return {
+        orphanCategories: orphanCategories || [],
+        orphanProducts: orphanProducts || [],
+        duplicates: duplicateReport,
+        isHealthy: !orphanCategories?.length && !orphanProducts?.length && !duplicateReport.length
+      };
+      
+    } catch (error) {
+      console.error('❌ Erro na verificação de integridade:', error);
+      throw error;
+    }
+  }
+  
+  /**
    * Executa limpeza completa das categorias
    */
   static async cleanupCategories(dryRun: boolean = true) {
     console.log('🧹 Iniciando limpeza completa de categorias...\n');
     
     try {
-      // 1. Unificar duplicatas
+      // 1. Gerar relatório inicial
+      if (dryRun) {
+        await this.generateDuplicateReport();
+      }
+      
+      // 2. Unificar duplicatas
       const unificationResults = await this.unifyDuplicateCategories(dryRun);
       
-      // 2. Remover órfãs
+      // 3. Remover órfãs
       const orphanResults = await this.removeOrphanCategories(dryRun);
+      
+      // 4. Verificar integridade final
+      if (!dryRun) {
+        console.log('\n🔍 Verificando integridade final...');
+        const integrity = await this.verifyIntegrity();
+        
+        if (integrity.isHealthy) {
+          console.log('✅ Banco de dados está íntegro!');
+        } else {
+          console.log('⚠️  Ainda há problemas de integridade para resolver');
+        }
+      }
       
       console.log('\n📊 Resumo da limpeza:');
       console.log(`  Categorias unificadas: ${unificationResults.length}`);
@@ -371,6 +542,8 @@ export class CategoryUnificationService {
       
       if (dryRun) {
         console.log('\n🧪 Para executar de verdade, use cleanupCategories(false)');
+      } else {
+        console.log('\n✅ Limpeza concluída com sucesso!');
       }
       
       return {
@@ -385,7 +558,62 @@ export class CategoryUnificationService {
   }
 }
 
+/**
+ * Executa migração via Supabase (equivalente ao script SQL)
+ * Esta função replica a lógica do script SQL usando a API do Supabase
+ */
+export async function executeCategoryMigration(projectId: string, dryRun: boolean = true) {
+  console.log(`🚀 Executando migração de categorias via Supabase${dryRun ? ' (SIMULAÇÃO)' : ''}...`);
+  
+  try {
+    // Verificar se temos acesso ao projeto
+    console.log(`📡 Conectando ao projeto: ${projectId}`);
+    
+    // Executar limpeza usando o serviço
+    const results = await CategoryUnificationService.cleanupCategories(dryRun);
+    
+    if (!dryRun) {
+      // Executar verificação final
+      const integrity = await CategoryUnificationService.verifyIntegrity();
+      
+      console.log('\n📊 Resultado da migração:');
+      console.log(`  ✅ Categorias unificadas: ${results.unified.length}`);
+      console.log(`  ✅ Categorias órfãs removidas: ${results.orphans.length}`);
+      console.log(`  ${integrity.isHealthy ? '✅' : '⚠️'} Integridade: ${integrity.isHealthy ? 'OK' : 'Problemas detectados'}`);
+      
+      if (!integrity.isHealthy) {
+        console.log('\n⚠️  Problemas de integridade detectados:');
+        if (integrity.orphanCategories.length) {
+          console.log(`    - ${integrity.orphanCategories.length} categorias órfãs`);
+        }
+        if (integrity.orphanProducts.length) {
+          console.log(`    - ${integrity.orphanProducts.length} produtos sem categoria`);
+        }
+        if (integrity.duplicates.length) {
+          console.log(`    - ${integrity.duplicates.length} possíveis duplicatas`);
+        }
+      }
+    }
+    
+    return results;
+    
+  } catch (error) {
+    console.error('❌ Erro na migração:', error);
+    throw error;
+  }
+}
+
 // Função de conveniência para executar no console
 export const unifyCategories = (dryRun: boolean = true) => {
   return CategoryUnificationService.cleanupCategories(dryRun);
+};
+
+// Função para executar relatório detalhado
+export const generateCategoryReport = () => {
+  return CategoryUnificationService.generateDuplicateReport();
+};
+
+// Função para verificar integridade
+export const verifyCategoryIntegrity = () => {
+  return CategoryUnificationService.verifyIntegrity();
 };

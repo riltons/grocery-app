@@ -352,6 +352,49 @@ export const ListsService = {
         }
       }
 
+      // Buscar informações completas do item recém-criado para incluir categoria
+      let categoryInfo = '';
+      let categoryId = null;
+      
+      if (productId) {
+        // Se tem produto específico, buscar categoria através do produto genérico
+        const { data: specificProduct } = await supabase
+          .from('specific_products')
+          .select(`
+            generic_product_id,
+            generic_products (
+              categories (
+                id,
+                name
+              )
+            )
+          `)
+          .eq('id', productId)
+          .single();
+          
+        if (specificProduct?.generic_products?.categories) {
+          categoryInfo = specificProduct.generic_products.categories.name;
+          categoryId = specificProduct.generic_products.categories.id;
+        }
+      } else if (item.generic_product_id) {
+        // Se tem produto genérico, buscar categoria diretamente
+        const { data: genericProduct } = await supabase
+          .from('generic_products')
+          .select(`
+            categories (
+              id,
+              name
+            )
+          `)
+          .eq('id', item.generic_product_id)
+          .single();
+          
+        if (genericProduct?.categories) {
+          categoryInfo = genericProduct.categories.name;
+          categoryId = genericProduct.categories.id;
+        }
+      }
+
       return { 
         data: { 
           ...listItemData, 
@@ -359,6 +402,8 @@ export const ListsService = {
           product_id: productId || null,
           generic_product_id: item.generic_product_id || null,
           is_generic: !!item.generic_product_id && !productId,
+          category: categoryInfo || '',
+          category_id: categoryId,
         }, 
         error: null 
       };

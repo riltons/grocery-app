@@ -61,31 +61,83 @@ O sistema identifica e unifica automaticamente:
 ### Método 1: Via Aplicação (Recomendado)
 
 ```typescript
-import { CategoryUnificationService } from './lib/unify-categories';
+import { 
+  CategoryUnificationService,
+  generateCategoryReport,
+  verifyCategoryIntegrity,
+  unifyCategories
+} from './lib/unify-categories';
 
-// 1. Analisar duplicatas (apenas visualizar)
+// 1. Gerar relatório detalhado (equivalente ao SQL STRING_AGG)
+const report = await generateCategoryReport();
+
+// 2. Analisar duplicatas (apenas visualizar)
 const duplicates = await CategoryUnificationService.analyzeDuplicateCategories();
 
-// 2. Simulação completa (seguro)
-const results = await CategoryUnificationService.cleanupCategories(true);
+// 3. Simulação completa (seguro)
+const results = await unifyCategories(true);
 
-// 3. Execução real (cuidado!)
-const results = await CategoryUnificationService.cleanupCategories(false);
+// 4. Execução real (cuidado!)
+const results = await unifyCategories(false);
+
+// 5. Verificar integridade após migração
+const integrity = await verifyCategoryIntegrity();
 ```
 
-### Método 2: Via Script
+### Método 2: Via Script Interativo
 
 ```bash
-# Executar script de unificação
+# Executar script de unificação com menu interativo
 node scripts/unify-categories.js
+
+# O script oferece as seguintes opções:
+# 1. Gerar relatório detalhado
+# 2. Executar simulação completa  
+# 3. Executar unificação real
+# 4. Verificar integridade
+# 5. Executar tudo (fluxo completo)
 ```
 
-### Método 3: Via SQL (Avançado)
+### Método 3: Via Supabase MCP
+
+```typescript
+import { runCategoryUnificationMigration } from './docs/category-unification-migration';
+
+// Simulação
+await runCategoryUnificationMigration('seu-project-id', true);
+
+// Execução real
+await runCategoryUnificationMigration('seu-project-id', false);
+```
+
+### Método 4: Via SQL (Avançado)
 
 ```sql
 -- Executar queries do arquivo
 \i docs/unify-duplicate-categories.sql
 ```
+
+## Novas Funcionalidades
+
+### 1. Relatório Detalhado
+- **Função**: `generateCategoryReport()`
+- **Equivalente SQL**: `STRING_AGG` para agrupar variações
+- **Saída**: Relatório completo com contagem de produtos e IDs
+
+### 2. Verificação de Integridade
+- **Função**: `verifyCategoryIntegrity()`
+- **Verifica**: Categorias órfãs, produtos sem categoria, duplicatas restantes
+- **Saída**: Status de saúde do banco de dados
+
+### 3. Script Interativo
+- **Menu**: 5 opções diferentes de execução
+- **Confirmação**: Proteção contra execução acidental
+- **Fluxo completo**: Relatório → Simulação → Confirmação → Execução
+
+### 4. Migração via Supabase
+- **Função**: `runCategoryUnificationMigration()`
+- **Integração**: Funciona com Supabase MCP
+- **Logs detalhados**: Acompanhamento em tempo real
 
 ## Processo de Unificação
 
@@ -93,6 +145,7 @@ node scripts/unify-categories.js
 - Identifica categorias com nomes similares
 - Conta produtos vinculados a cada categoria
 - Determina qual categoria manter
+- Gera relatório detalhado com STRING_AGG equivalente
 
 ### 2. Seleção da Categoria Principal
 Critérios de prioridade:
