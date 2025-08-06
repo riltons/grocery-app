@@ -17,7 +17,7 @@ import type { SpecificProduct, GenericProduct } from '../lib/supabase';
 import SimpleBarcodeScanner from './SimpleBarcodeScanner';
 import ScanResultModal from './ScanResultModal';
 import GenericProductSelector from './GenericProductSelector';
-import ProductSelectorNew from './ProductSelectorNew';
+
 import { BarcodeService, ProductInfo, BarcodeResult, GenericProductMatcher, SpecificProductCreationService } from '../lib/barcode';
 import { ProductService } from '../lib/products';
 import { supabase } from '../lib/supabase';
@@ -73,9 +73,7 @@ export default function AddProductInterface({
   const [genericProducts, setGenericProducts] = useState<GenericProduct[]>([]);
   const [genericSelectorMultiMode, setGenericSelectorMultiMode] = useState(false);
   
-  // Product selector states
-  const [showProductSelector, setShowProductSelector] = useState(false);
-  const [productSelectorMultiMode, setProductSelectorMultiMode] = useState(false);
+
   
   const slideAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
@@ -451,75 +449,7 @@ export default function AddProductInterface({
     }
   };
 
-  // Product selector functions
-  const handleOpenProductSelector = (multiMode = false) => {
-    console.log('🆕 ABRINDO PRODUCT SELECTOR - Modo:', multiMode ? 'Múltiplo' : 'Simples');
-    console.log('  Produtos na lista atual:', currentListProductNames.length);
-    
-    setProductSelectorMultiMode(multiMode);
-    setShowProductSelector(true);
-  };
 
-  const handleCloseProductSelector = () => {
-    setShowProductSelector(false);
-    setProductSelectorMultiMode(false);
-    // Forçar re-renderização para atualizar dados da lista atual
-    setTimeout(() => {
-      // Pequeno delay para garantir que o estado seja atualizado
-    }, 100);
-  };
-
-  const handleSelectProductFromSelector = async (product: SpecificProduct) => {
-    const qty = parseFloat(quantity) || 1;
-    try {
-      await onSelectProduct(product, qty, selectedUnit);
-      setShowProductSelector(false);
-      setQuantity('1');
-      setSelectedUnit('un');
-      setIsExpanded(false);
-      Keyboard.dismiss();
-    } catch (error) {
-      console.error('Erro ao adicionar produto:', error);
-    }
-  };
-
-  const handleSelectMultipleProducts = async (products: SpecificProduct[]) => {
-    console.log('✅ INTERFACE - Confirmando seleção múltipla:');
-    console.log('  Produtos a serem adicionados:', products.length);
-    console.log('  Produtos:', products.map(p => p.name));
-    
-    const qty = parseFloat(quantity) || 1;
-    try {
-      // Adicionar todos os produtos selecionados
-      for (const product of products) {
-        console.log(`  ➕ Adicionando: ${product.name}`);
-        await onSelectProduct(product, qty, selectedUnit);
-      }
-      setShowProductSelector(false);
-      setQuantity('1');
-      setSelectedUnit('un');
-      setIsExpanded(false);
-      Keyboard.dismiss();
-      
-      console.log('✅ INTERFACE - Produtos adicionados com sucesso');
-    } catch (error) {
-      console.error('Erro ao adicionar produtos múltiplos:', error);
-    }
-  };
-
-  const handleCreateNewProductFromSelector = async (productName: string) => {
-    const qty = parseFloat(quantity) || 1;
-    try {
-      await onCreateNewProduct(productName, qty, selectedUnit);
-      setShowProductSelector(false);
-      setQuantity('1');
-      setSelectedUnit('un');
-      setIsExpanded(false);
-      Keyboard.dismiss();
-    } catch (error) {
-      console.error('Erro ao criar produto:', error);
-    }
-  };
 
   const renderSuggestion = ({ item }: { item: SpecificProduct }) => (
     <TouchableOpacity
@@ -615,21 +545,7 @@ export default function AddProductInterface({
               <Ionicons name="list-outline" size={20} color="#FF9800" />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.productSelectorButton}
-              onPress={() => handleOpenProductSelector(false)}
-              disabled={loading}
-            >
-              <Ionicons name="cube-outline" size={20} color="#2196F3" />
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.multiSelectButton}
-              onPress={() => handleOpenProductSelector(true)}
-              disabled={loading}
-            >
-              <Ionicons name="checkbox-outline" size={20} color="#9C27B0" />
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.scannerButton}
@@ -843,17 +759,7 @@ export default function AddProductInterface({
         listId={listId}
       />
 
-      {/* Product Selector Modal */}
-      <ProductSelectorNew
-        visible={showProductSelector}
-        onClose={handleCloseProductSelector}
-        onSelectProduct={handleSelectProductFromSelector}
-        onSelectMultipleProducts={handleSelectMultipleProducts}
-        onCreateNewProduct={handleCreateNewProductFromSelector}
-        allowMultipleSelection={productSelectorMultiMode}
-        currentListProductIds={currentListProductIds}
-        currentListProductNames={currentListProductNames}
-      />
+
     </View>
   );
 }
@@ -921,22 +827,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FF9800',
   },
-  productSelectorButton: {
-    marginLeft: 8,
-    padding: 8,
-    backgroundColor: '#e3f2fd',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#2196F3',
-  },
-  multiSelectButton: {
-    marginLeft: 8,
-    padding: 8,
-    backgroundColor: '#f3e5f5',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#9C27B0',
-  },
+
   scannerButton: {
     marginLeft: 8,
     padding: 8,
