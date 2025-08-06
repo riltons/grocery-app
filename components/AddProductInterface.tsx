@@ -55,7 +55,7 @@ export default function AddProductInterface({
   const [selectedUnit, setSelectedUnit] = useState('un');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState<SpecificProduct[]>([]);
-  const [isExpanded, setIsExpanded] = useState(false);
+
   const [showAllProducts, setShowAllProducts] = useState(false);
   const [allProducts, setAllProducts] = useState<SpecificProduct[]>([]);
   const [loadingAllProducts, setLoadingAllProducts] = useState(false);
@@ -74,8 +74,6 @@ export default function AddProductInterface({
   const [genericSelectorMultiMode, setGenericSelectorMultiMode] = useState(false);
   
 
-  
-  const slideAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
 
   // Carregar todos os produtos cadastrados
@@ -117,14 +115,7 @@ export default function AddProductInterface({
     }
   }, [productName, suggestions, showAllProducts]);
 
-  // Animação para expandir/contrair interface
-  useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: isExpanded ? 1 : 0,
-      duration: 300,
-      useNativeDriver: true, // Usa native driver para melhor performance
-    }).start();
-  }, [isExpanded]);
+
 
   const handleAddProduct = async () => {
     if (!productName.trim()) return;
@@ -147,7 +138,6 @@ export default function AddProductInterface({
       setProductName('');
       setQuantity('1');
       setSelectedUnit('un');
-      setIsExpanded(false);
       Keyboard.dismiss();
     } catch (error) {
       console.error('Erro ao adicionar produto:', error);
@@ -162,7 +152,6 @@ export default function AddProductInterface({
       setQuantity('1');
       setSelectedUnit('un');
       setShowSuggestions(false);
-      setIsExpanded(false);
       Keyboard.dismiss();
     } catch (error) {
       console.error('Erro ao adicionar produto sugerido:', error);
@@ -192,7 +181,6 @@ export default function AddProductInterface({
     // Focus on the input field for manual entry
     setTimeout(() => {
       inputRef.current?.focus();
-      setIsExpanded(true);
     }, 100);
   };
 
@@ -317,7 +305,6 @@ export default function AddProductInterface({
         // Reset form
         setQuantity('1');
         setSelectedUnit('un');
-        setIsExpanded(false);
       } else if (result.errors && result.errors.length > 0) {
         // Handle duplicate or validation errors
         if (result.errors.some(error => error.includes('já existe'))) {
@@ -353,7 +340,6 @@ export default function AddProductInterface({
                         // Reset form
                         setQuantity('1');
                         setSelectedUnit('un');
-                        setIsExpanded(false);
                       }
                     }
                   } catch (error) {
@@ -425,7 +411,6 @@ export default function AddProductInterface({
       setShowGenericSelector(false);
       setQuantity('1');
       setSelectedUnit('un');
-      setIsExpanded(false);
       Keyboard.dismiss();
     } catch (error) {
       console.error('Erro ao adicionar produto genérico:', error);
@@ -442,7 +427,6 @@ export default function AddProductInterface({
       setShowGenericSelector(false);
       setQuantity('1');
       setSelectedUnit('un');
-      setIsExpanded(false);
       Keyboard.dismiss();
     } catch (error) {
       console.error('Erro ao adicionar produtos genéricos múltiplos:', error);
@@ -495,7 +479,7 @@ export default function AddProductInterface({
   return (
     <View style={styles.container}>
       {/* Produtos Frequentes */}
-      {frequentProducts.length > 0 && !isExpanded && (
+      {frequentProducts.length > 0 && (
         <View style={styles.frequentSection}>
           <Text style={styles.sectionTitle}>Produtos frequentes</Text>
           <FlatList
@@ -520,7 +504,6 @@ export default function AddProductInterface({
               value={productName}
               onChangeText={setProductName}
               onFocus={() => {
-                setIsExpanded(true);
                 if (productName.length === 0) {
                   loadAllProducts();
                   setShowAllProducts(true);
@@ -555,16 +538,7 @@ export default function AddProductInterface({
               <Ionicons name="barcode-outline" size={20} color="#4CAF50" />
             </TouchableOpacity>
             
-            <TouchableOpacity
-              style={styles.expandButton}
-              onPress={() => setIsExpanded(!isExpanded)}
-            >
-              <Ionicons 
-                name={isExpanded ? "chevron-up" : "chevron-down"} 
-                size={20} 
-                color="#4CAF50" 
-              />
-            </TouchableOpacity>
+
           </View>
 
           {/* Sugestões */}
@@ -624,80 +598,7 @@ export default function AddProductInterface({
           )}
         </View>
 
-        {/* Controles Expandidos */}
-        {isExpanded && (
-          <Animated.View
-            style={[
-              styles.expandedControls,
-              {
-                opacity: slideAnim,
-              },
-            ]}
-          >
-            {/* Quantidade */}
-            <View style={styles.quantitySection}>
-              <Text style={styles.controlLabel}>Quantidade</Text>
-              <View style={styles.quantityControls}>
-                {QUICK_QUANTITIES.map((qty) => (
-                  <TouchableOpacity
-                    key={qty}
-                    style={[
-                      styles.quickQuantityButton,
-                      quantity === qty.toString() && styles.quickQuantitySelected,
-                    ]}
-                    onPress={() => setQuantity(qty.toString())}
-                  >
-                    <Text
-                      style={[
-                        styles.quickQuantityText,
-                        quantity === qty.toString() && styles.quickQuantityTextSelected,
-                      ]}
-                    >
-                      {qty}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                <TextInput
-                  style={styles.customQuantityInput}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="numeric"
-                  placeholder="Qtd"
-                />
-              </View>
-            </View>
 
-            {/* Unidade */}
-            <View style={styles.unitSection}>
-              <Text style={styles.controlLabel}>Unidade</Text>
-              <FlatList
-                data={COMMON_UNITS}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[
-                      styles.unitButton,
-                      selectedUnit === item && styles.unitButtonSelected,
-                    ]}
-                    onPress={() => setSelectedUnit(item)}
-                  >
-                    <Text
-                      style={[
-                        styles.unitButtonText,
-                        selectedUnit === item && styles.unitButtonTextSelected,
-                      ]}
-                    >
-                      {item}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                keyExtractor={(item) => item}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.unitsList}
-              />
-            </View>
-          </Animated.View>
-        )}
 
         {/* Botão Adicionar */}
         <TouchableOpacity
@@ -836,10 +737,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#4CAF50',
   },
-  expandButton: {
-    marginLeft: 8,
-    padding: 8,
-  },
   suggestionsContainer: {
     marginTop: 8,
   },
@@ -864,81 +761,6 @@ const styles = StyleSheet.create({
   suggestionBrand: {
     fontSize: 12,
     color: '#666',
-  },
-  expandedControls: {
-    paddingTop: 8,
-  },
-  quantitySection: {
-    marginBottom: 20,
-  },
-  controlLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  quickQuantityButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  quickQuantitySelected: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  quickQuantityText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  quickQuantityTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  customQuantityInput: {
-    backgroundColor: '#fff',
-    padding: 8,
-    borderRadius: 6,
-    width: 60,
-    textAlign: 'center',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  unitSection: {
-    marginBottom: 20,
-  },
-  unitsList: {
-    paddingRight: 16,
-  },
-  unitButton: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  unitButtonSelected: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  unitButtonText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  unitButtonTextSelected: {
-    color: '#fff',
-    fontWeight: '600',
   },
   addButton: {
     backgroundColor: '#4CAF50',
