@@ -194,7 +194,23 @@ export default function AddProductInterface({
       if (existingProduct) {
         console.log('Produto encontrado no banco local:', existingProduct);
         
-        // Se o produto já existe, usar as informações do banco
+        // Produto já existe no banco - adicionar diretamente à lista
+        try {
+          const qty = parseFloat(quantity) || 1;
+          await onSelectProduct(existingProduct, qty, selectedUnit);
+          
+          // Limpar campos após adicionar
+          setQuantity('1');
+          setSelectedUnit('un');
+          
+          console.log('Produto existente adicionado automaticamente à lista');
+          return; // Sair da função sem mostrar o modal
+        } catch (error) {
+          console.error('Erro ao adicionar produto existente automaticamente:', error);
+          // Se der erro ao adicionar automaticamente, continuar com o fluxo normal do modal
+        }
+        
+        // Fallback: se não conseguiu adicionar automaticamente, mostrar o modal
         const productInfo: ProductInfo = {
           barcode: existingProduct.barcode || result.data,
           name: existingProduct.name,
