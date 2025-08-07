@@ -135,6 +135,26 @@ export type PriceHistory = {
   user_id: string;
 };
 
+export type PriceSearchSession = {
+  id: string;
+  store_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+  is_active: boolean;
+};
+
+export type PriceSearchItem = {
+  id: string;
+  session_id: string;
+  specific_product_id: string;
+  price?: number;
+  scanned: boolean;
+  created_at: string;
+  user_id: string;
+};
+
 // Tipos para compartilhamento de listas
 export type SharePermission = 'view' | 'edit' | 'admin';
 

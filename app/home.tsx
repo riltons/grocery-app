@@ -5,10 +5,10 @@ import {
   StyleSheet,
   FlatList,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ListsService } from '../lib/lists';
@@ -16,26 +16,30 @@ import ListCard from '../components/ListCard';
 import CreateListModal from '../components/CreateListModal';
 import SafeContainer from '../components/SafeContainer';
 import SafeFAB from '../components/SafeFAB';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type { List } from '../lib/supabase';
 
 export default function Home() {
   const { user, signOut } = useAuth();
+  const { showError, showSuccess } = useToast();
   const router = useRouter();
   const [lists, setLists] = useState<List[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const loadLists = useCallback(async () => {
     try {
       const { data, error } = await ListsService.getUserLists();
       if (error) {
-        Alert.alert('Erro', 'Erro ao carregar listas');
+        showError('Erro', 'Erro ao carregar listas');
       } else {
         setLists(data || []);
       }
     } catch (error) {
-      Alert.alert('Erro', 'Ocorreu um erro inesperado');
+      showError('Erro', 'Ocorreu um erro inesperado');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -51,22 +55,26 @@ export default function Home() {
     loadLists();
   };
 
-  const handleLogout = async () => {
-    Alert.alert(
-      'Sair',
-      'Tem certeza que deseja sair?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: async () => {
-            await signOut();
-            router.replace('/');
-          },
-        },
-      ]
-    );
+  const handleLogout = () => {
+    setShowLogoutDialog(true);
+  };
+
+  const confirmLogout = async () => {
+    try {
+      setLoggingOut(true);
+      await signOut();
+      showSuccess('Até logo!', 'Você foi desconectado com sucesso');
+      router.replace('/');
+    } catch (error) {
+      showError('Erro', 'Não foi possível fazer logout');
+    } finally {
+      setLoggingOut(false);
+      setShowLogoutDialog(false);
+    }
+  };
+
+  const cancelLogout = () => {
+    setShowLogoutDialog(false);
   };
 
   const renderListItem = ({ item }: { item: List }) => (
@@ -145,6 +153,21 @@ export default function Home() {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onSuccess={loadLists}
+      />
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        visible={showLogoutDialog}
+        title="Sair"
+        message="Tem certeza que deseja sair?"
+        confirmText="Sair"
+        cancelText="Cancelar"
+        confirmColor="#ef4444"
+        icon="log-out"
+        iconColor="#ef4444"
+        loading={loggingOut}
+        onConfirm={confirmLogout}
+        onCancel={cancelLogout}
       />
     </SafeContainer>
   );

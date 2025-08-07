@@ -6,18 +6,19 @@ import {
   ScrollView, 
   TouchableOpacity, 
   TextInput, 
-  ActivityIndicator, 
-  Alert
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { StoreService } from '../../lib/stores';
+import { useToast } from '../../context/ToastContext';
 import { supabase } from '../../lib/supabase';
 import SafeContainer from '../../components/SafeContainer';
 
 export default function NewStore() {
   const router = useRouter();
+  const { showSuccess, showError } = useToast();
   
   // Estados para gerenciar os dados do formulário
   const [name, setName] = useState('');
@@ -30,7 +31,7 @@ export default function NewStore() {
   // Salvar nova loja
   const handleSaveStore = async () => {
     if (!isFormValid) {
-      Alert.alert('Erro', 'Por favor, informe pelo menos o nome da loja');
+      showError('Erro', 'Por favor, informe pelo menos o nome da loja');
       return;
     }
     
@@ -41,7 +42,7 @@ export default function NewStore() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        Alert.alert('Erro', 'Usuário não autenticado');
+        showError('Erro', 'Usuário não autenticado');
         return;
       }
       
@@ -52,26 +53,18 @@ export default function NewStore() {
       });
       
       if (error) {
-        Alert.alert('Erro', 'Não foi possível cadastrar a loja');
+        showError('Erro', 'Não foi possível cadastrar a loja');
         console.error('Erro ao cadastrar loja:', error);
         return;
       }
       
       if (data) {
-        Alert.alert(
-          'Sucesso', 
-          'Loja cadastrada com sucesso!',
-          [
-            { 
-              text: 'OK', 
-              onPress: () => router.replace(`/stores/${data.id}`)
-            }
-          ]
-        );
+        showSuccess('Sucesso', 'Loja cadastrada com sucesso!');
+        router.replace(`/stores/${data.id}`);
       }
     } catch (error) {
       console.error('Erro ao cadastrar loja:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao cadastrar a loja');
+      showError('Erro', 'Ocorreu um erro ao cadastrar a loja');
     } finally {
       setSaving(false);
     }

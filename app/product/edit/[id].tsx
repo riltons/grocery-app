@@ -6,8 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProductService, getCategoryNameById } from '../../../lib/products';
 import { CategoryService, Category } from '../../../lib/categories';
 import SafeContainer from '../../../components/SafeContainer';
-import Toast from '../../../components/Toast';
-import { useToast } from '../../../lib/useToast';
+import { useToast } from '../../../context/ToastContext';
 import CategorySelector from '../../../components/CategorySelector';
 import GenericProductSelector from '../../../components/GenericProductSelector';
 import { GenericProduct } from '../../../lib/supabase';
@@ -35,7 +34,7 @@ type Product = {
 export default function EditProduct() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { toast, showSuccess, showError, hideToast } = useToast();
+  const { showSuccess, showError } = useToast();
   
   // Estados para gerenciar os dados
   const [product, setProduct] = useState<Product | null>(null);
@@ -313,12 +312,6 @@ export default function EditProduct() {
             <Text style={styles.backButtonText}>Voltar</Text>
           </TouchableOpacity>
         </View>
-        <Toast
-          visible={toast.visible}
-          message={toast.message}
-          type={toast.type}
-          onHide={hideToast}
-        />
       </SafeContainer>
     );
   }
@@ -450,13 +443,6 @@ export default function EditProduct() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-      
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
-      />
       
       {/* Modal para seleção de produto genérico */}
       <GenericProductSelector

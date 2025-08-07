@@ -7,8 +7,7 @@ import { ProductService, getCategoryNameById } from '../../lib/products';
 import { CategoryService } from '../../lib/categories';
 import { BarcodeResult } from '../../lib/barcode';
 import SafeContainer from '../../components/SafeContainer';
-import Toast from '../../components/Toast';
-import { useToast } from '../../lib/useToast';
+import { useToast } from '../../context/ToastContext';
 import FloatingActionButton from '../../components/FloatingActionButton';
 import ProductCategorySection from '../../components/ProductCategorySection';
 import BarcodeScannerModal from '../../components/BarcodeScannerModal';
@@ -29,7 +28,7 @@ type Product = {
 
 export default function ProductList() {
   const router = useRouter();
-  const { toast, showSuccess, showError, hideToast } = useToast();
+  const { showSuccess, showError } = useToast();
   
   // Estados para gerenciar os dados
   const [specificProducts, setSpecificProducts] = useState<Product[]>([]);
@@ -435,13 +434,6 @@ export default function ProductList() {
         onClose={() => setShowBarcodeScanner(false)}
         onBarcodeScanned={handleBarcodeScanned}
         onManualEntry={handleManualEntry}
-      />
-      
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
       />
     </SafeContainer>
   );

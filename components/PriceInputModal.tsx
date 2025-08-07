@@ -9,15 +9,18 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import ProductImage from './ProductImage';
 
 interface PriceInputModalProps {
   visible: boolean;
   onClose: () => void;
   onConfirm: (price: number) => Promise<void>;
   productName: string;
-  quantity: number;
-  unit: string;
-  loading?: boolean;
+  productBrand?: string;
+  productImage?: string;
+  quantity?: number;
+  unit?: string;
+  currentPrice?: number;
 }
 
 export default function PriceInputModal({
@@ -25,12 +28,23 @@ export default function PriceInputModal({
   onClose,
   onConfirm,
   productName,
+  productBrand,
+  productImage,
   quantity,
   unit,
-  loading = false,
+  currentPrice,
 }: PriceInputModalProps) {
   const [price, setPrice] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Atualizar preço quando o modal abrir com preço atual
+  React.useEffect(() => {
+    if (visible && currentPrice !== undefined) {
+      setPrice(currentPrice.toFixed(2).replace('.', ','));
+    } else if (visible) {
+      setPrice('');
+    }
+  }, [visible, currentPrice]);
 
   const handleConfirm = async () => {
     const priceValue = parseFloat(price.replace(',', '.'));
@@ -87,10 +101,25 @@ export default function PriceInputModal({
           </View>
 
           <View style={styles.productInfo}>
-            <Text style={styles.productName}>{productName}</Text>
-            <Text style={styles.productDetails}>
-              {quantity} {unit}
-            </Text>
+            <View style={styles.productHeader}>
+              <ProductImage 
+                imageUrl={productImage}
+                size="large"
+                style={styles.productImage}
+              />
+              
+              <View style={styles.productDetails}>
+                <Text style={styles.productName}>{productName}</Text>
+                {productBrand && (
+                  <Text style={styles.productBrand}>{productBrand}</Text>
+                )}
+                {quantity && unit && (
+                  <Text style={styles.productQuantity}>
+                    {quantity} {unit}
+                  </Text>
+                )}
+              </View>
+            </View>
           </View>
 
           <View style={styles.inputContainer}>
@@ -113,13 +142,23 @@ export default function PriceInputModal({
           </View>
 
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.skipButton, saving && styles.buttonDisabled]}
-              onPress={handleSkip}
-              disabled={saving}
-            >
-              <Text style={styles.skipButtonText}>Pular</Text>
-            </TouchableOpacity>
+            {quantity && unit ? (
+              <TouchableOpacity
+                style={[styles.skipButton, saving && styles.buttonDisabled]}
+                onPress={handleSkip}
+                disabled={saving}
+              >
+                <Text style={styles.skipButtonText}>Pular</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.skipButton, saving && styles.buttonDisabled]}
+                onPress={onClose}
+                disabled={saving}
+              >
+                <Text style={styles.skipButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={[styles.confirmButton, saving && styles.buttonDisabled]}
@@ -131,7 +170,9 @@ export default function PriceInputModal({
               ) : (
                 <>
                   <Ionicons name="checkmark" size={20} color="#fff" />
-                  <Text style={styles.confirmButtonText}>Confirmar</Text>
+                  <Text style={styles.confirmButtonText}>
+                    {currentPrice !== undefined ? 'Atualizar' : 'Confirmar'}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -173,15 +214,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 20,
   },
+  productHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  productImage: {
+    marginRight: 12,
+  },
+  productDetails: {
+    flex: 1,
+  },
   productName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  productDetails: {
+  productBrand: {
     fontSize: 14,
-    color: '#666',
+    color: '#64748b',
+    marginBottom: 2,
+  },
+  productQuantity: {
+    fontSize: 14,
+    color: '#94a3b8',
   },
   inputContainer: {
     marginBottom: 24,

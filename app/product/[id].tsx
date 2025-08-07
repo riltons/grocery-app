@@ -7,8 +7,7 @@ import { ProductService } from '../../lib/products';
 import { StoreService } from '../../lib/stores';
 
 import UnitSelector from '../../components/UnitSelector';
-import Toast from '../../components/Toast';
-import { useToast } from '../../lib/useToast';
+import { useToast } from '../../context/ToastContext';
 import PriceHistoryModal from '../../components/PriceHistoryModal';
 import SafeContainer from '../../components/SafeContainer';
 import GenericProductSelector from '../../components/GenericProductSelector';
@@ -58,7 +57,7 @@ type PriceRecord = {
 export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { toast, showSuccess, showError, hideToast } = useToast();
+  const { showSuccess, showError } = useToast();
   
   // Estados para gerenciar os dados
   const [product, setProduct] = useState<Product | null>(null);
@@ -751,15 +750,6 @@ export default function ProductDetail() {
         onClose={() => setShowGenericProductModal(false)}
         onSelectProduct={handleChangeGenericProduct}
         searchQuery={product.name}
-      />
-
-
-      
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
       />
     </SafeContainer>
   );

@@ -9,13 +9,12 @@ import { supabase } from '../../lib/supabase';
 import CategorySelector from '../../components/CategorySelector';
 import GenericProductSelector from '../../components/GenericProductSelector';
 import SafeContainer from '../../components/SafeContainer';
-import Toast from '../../components/Toast';
-import { useToast } from '../../lib/useToast';
+import { useToast } from '../../context/ToastContext';
 
 export default function NewProduct() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { toast, showSuccess, showError, hideToast } = useToast();
+  const { showSuccess, showError } = useToast();
   
   // Verificar se veio de uma lista específica
   const listId = params.listId as string;
@@ -429,13 +428,6 @@ export default function NewProduct() {
           setShowGenericProductSelector(false);
         }}
         searchQuery={scannedBarcode ? extractFirstProductName(productName) : productName}
-      />
-
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
       />
     </SafeContainer>
   );

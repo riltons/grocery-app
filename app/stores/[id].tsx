@@ -1,311 +1,272 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  Alert,
-  TextInput
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  FlatList,
+  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { StoreService } from '../../lib/stores';
 import SafeContainer from '../../components/SafeContainer';
-import Toast from '../../components/Toast';
-import { useToast } from '../../lib/useToast';
-import type { Store, PriceHistory } from '../../lib/supabase';
+import ProductImage from '../../components/ProductImage';
+import { useToast } from '../../context/ToastContext';
+import { StoreService } from '../../lib/stores';
+import type { Store } from '../../lib/supabase';
 
-export default function StoreDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
-  const { toast, showSuccess, showError, hideToast } = useToast();
-  
-  // Estados para gerenciar os dados
-  const [store, setStore] = useState<Store | null>(null);
-  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  
-  // Carregar dados da loja
-  useEffect(() => {
-    if (!id) return;
-    
-    const fetchStoreData = async () => {
-      try {
-        setLoading(true);
-        
-        // Buscar dados da loja
-        const { data: storeData, error: storeError } = await StoreService.getStoreById(id);
-        
-        if (storeError) {
-          Alert.alert('Erro', 'Não foi possível carregar os detalhes da loja');
-          return;
-        }
-        
-        if (storeData) {
-          setStore(storeData);
-          setName(storeData.name);
-          setAddress(storeData.address || '');
-        }
-        
-        // Buscar histórico de preços da loja
-        const { data: pricesData, error: pricesError } = await StoreService.getPriceHistoryByStore(id);
-        
-        if (pricesError) {
-          console.error('Erro ao buscar histórico de preços:', pricesError);
-        } else if (pricesData) {
-          setPriceHistory(pricesData);
-        }
-      } catch (error) {
-        console.error('Erro ao buscar detalhes da loja:', error);
-        Alert.alert('Erro', 'Ocorreu um erro ao carregar a loja');
-      } finally {
-        setLoading(false);
-      }
+type StoreStats = {
+  totalProducts: number;
+  totalSpent: number;
+  averagePrice: number;
+  lastVisit: string | null;
+  priceEntries: number;
+};
+
+type ProductWithPrice = {
+  id: string;
+  name: string;
+  brand?: string;
+  barcode?: string;
+  image_url?: string;
+  latest_price: number;
+  latest_date: string;
+  generic_products?: {
+    name: string;
+    categories?: {
+      name: string;
     };
-    
-    fetchStoreData();
-  }, [id]);
-  
-  // Salvar alterações
-  const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert('Erro', 'Por favor, informe o nome da loja');
-      return;
+  };
+};
+
+export default function StoreDetailScreen() {
+  const params = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { showError } = useToast();
+  const [store, setStore] = useState<Store | null>(null);
+  const [stats, setStats] = useState<StoreStats | null>(null);
+  const [products, setProducts] = useState<ProductWithPrice[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (params.id) {
+      loadStoreData();
     }
-    
+  }, [params.id]);
+
+  const loadStoreData = async () => {
+    if (!params.id) return;
+
     try {
-      setSaving(true);
-      
-      const { error } = await StoreService.updateStore(id, {
-        name: name.trim(),
-        address: address.trim() || undefined,
-      });
-      
-      if (error) {
-        Alert.alert('Erro', 'Não foi possível atualizar a loja');
-      } else {
-        showSuccess('Loja atualizada com sucesso!');
-        setStore(prev => prev ? { ...prev, name: name.trim(), address: address.trim() || undefined } : null);
-        setEditing(false);
+      setLoading(true);
+
+      // Carregar dados da loja
+      const { data: storeData, error: storeError } = await StoreService.getStoreById(params.id);
+      if (storeError || !storeData) {
+        showError('Erro', 'Não foi possível carregar os dados da loja');
+        return;
       }
+      setStore(storeData);
+
+      // Carregar estatísticas
+      const { data: statsData } = await StoreService.getStoreStats(params.id);
+      if (statsData) {
+        setStats(statsData);
+      }
+
+      // Carregar produtos
+      const { data: productsData } = await StoreService.getStoreProducts(params.id);
+      if (productsData) {
+        setProducts(productsData);
+      }
+
     } catch (error) {
-      console.error('Erro ao atualizar loja:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao atualizar a loja');
+      console.error('Erro ao carregar dados da loja:', error);
+      showError('Erro', 'Ocorreu um erro ao carregar os dados da loja');
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
-  
-  // Cancelar edição
-  const handleCancel = () => {
-    if (store) {
-      setName(store.name);
-      setAddress(store.address || '');
-    }
-    setEditing(false);
+
+  const handleStartPriceSearch = () => {
+    if (!store) return;
+    
+    router.push({
+      pathname: '/stores/price-search',
+      params: {
+        storeId: store.id,
+        storeName: store.name,
+      }
+    });
   };
-  
-  // Excluir loja
-  const handleDelete = () => {
-    Alert.alert(
-      'Excluir Loja',
-      'Tem certeza que deseja excluir esta loja? Esta ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await StoreService.deleteStore(id);
-              
-              if (error) {
-                Alert.alert('Erro', 'Não foi possível excluir a loja');
-              } else {
-                showSuccess('Loja excluída com sucesso!');
-                // Aguardar um pouco para o usuário ver o toast, depois navegar
-                setTimeout(() => {
-                  router.replace('/stores');
-                }, 1500);
-              }
-            } catch (error) {
-              console.error('Erro ao excluir loja:', error);
-              Alert.alert('Erro', 'Ocorreu um erro ao excluir a loja');
-            }
-          },
-        },
-      ]
-    );
+
+  const handleViewHistory = () => {
+    if (!store) return;
+    
+    router.push(`/stores/sessions/${store.id}`);
   };
-  
+
+  const renderProductItem = ({ item }: { item: ProductWithPrice }) => (
+    <View style={styles.productItem}>
+      <ProductImage 
+        imageUrl={item.image_url}
+        size="medium"
+        style={styles.productItemImage}
+      />
+      
+      <View style={styles.productInfo}>
+        <Text style={styles.productName}>{item.name}</Text>
+        {item.brand && (
+          <Text style={styles.productBrand}>{item.brand}</Text>
+        )}
+        {item.generic_products?.categories?.name && (
+          <Text style={styles.productCategory}>
+            {item.generic_products.categories.name}
+          </Text>
+        )}
+        <Text style={styles.productDate}>
+          Última atualização: {new Date(item.latest_date).toLocaleDateString('pt-BR')}
+        </Text>
+      </View>
+      <View style={styles.priceContainer}>
+        <Text style={styles.price}>R$ {item.latest_price.toFixed(2)}</Text>
+      </View>
+    </View>
+  );
+
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Carregando loja...</Text>
-      </View>
+      <SafeContainer>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4CAF50" />
+          <Text style={styles.loadingText}>Carregando...</Text>
+        </View>
+      </SafeContainer>
     );
   }
-  
+
   if (!store) {
     return (
-      <View style={styles.errorContainer}>
-        <Ionicons name="alert-circle-outline" size={48} color="#ff6b6b" />
-        <Text style={styles.errorText}>Loja não encontrada</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeContainer>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Loja não encontrada</Text>
+        </View>
+      </SafeContainer>
     );
   }
-  
+
   return (
-    <SafeContainer style={styles.container}>
+    <SafeContainer>
       <StatusBar style="dark" />
       
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         
-        <Text style={styles.headerTitle}>Detalhes da Loja</Text>
-        
-        <TouchableOpacity 
-          style={styles.editButton} 
-          onPress={() => setEditing(!editing)}
-        >
-          <Ionicons 
-            name={editing ? "close" : "create-outline"} 
-            size={24} 
-            color="#333" 
-          />
-        </TouchableOpacity>
-      </View>
-      
-      <ScrollView style={styles.content}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Informações Básicas</Text>
-          
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Nome da Loja</Text>
-            {editing ? (
-              <TextInput
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-                placeholder="Nome da loja"
-                maxLength={100}
-              />
-            ) : (
-              <Text style={styles.fieldValue}>{store.name}</Text>
-            )}
-          </View>
-          
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Endereço</Text>
-            {editing ? (
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={address}
-                onChangeText={setAddress}
-                placeholder="Endereço da loja"
-                multiline
-                numberOfLines={3}
-                maxLength={300}
-              />
-            ) : (
-              <Text style={styles.fieldValue}>
-                {store.address || 'Não informado'}
-              </Text>
-            )}
-          </View>
-          
-          {editing && (
-            <View style={styles.editActions}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
-                onPress={handleCancel}
-                disabled={saving}
-              >
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.saveButton, saving && styles.buttonDisabled]} 
-                onPress={handleSave}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Salvar</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>{store.name}</Text>
+          {store.address && (
+            <Text style={styles.headerSubtitle}>{store.address}</Text>
           )}
         </View>
-        
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Estatísticas</Text>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Action Buttons */}
+        <View style={styles.actionSection}>
+          <TouchableOpacity
+            style={styles.priceSearchButton}
+            onPress={handleStartPriceSearch}
+          >
+            <Ionicons name="barcode-outline" size={24} color="#fff" />
+            <Text style={styles.priceSearchButtonText}>Pesquisar Preços</Text>
+          </TouchableOpacity>
           
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{priceHistory.length}</Text>
-              <Text style={styles.statLabel}>Preços registrados</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>
-                {new Date(store.created_at).toLocaleDateString('pt-BR')}
-              </Text>
-              <Text style={styles.statLabel}>Cadastrada em</Text>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={styles.historyButton}
+            onPress={handleViewHistory}
+          >
+            <Ionicons name="receipt-outline" size={20} color="#4CAF50" />
+            <Text style={styles.historyButtonText}>Ver Histórico</Text>
+          </TouchableOpacity>
         </View>
-        
-        {!editing && (
-          <View style={styles.section}>
-            <TouchableOpacity 
-              style={styles.deleteButton} 
-              onPress={handleDelete}
-            >
-              <Ionicons name="trash-outline" size={20} color="#fff" />
-              <Text style={styles.deleteButtonText}>Excluir Loja</Text>
-            </TouchableOpacity>
+
+        {/* Statistics */}
+        {stats && (
+          <View style={styles.statsSection}>
+            <Text style={styles.sectionTitle}>Estatísticas</Text>
+            <View style={styles.statsGrid}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{stats.totalProducts}</Text>
+                <Text style={styles.statLabel}>Produtos</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>R$ {stats.totalSpent.toFixed(2)}</Text>
+                <Text style={styles.statLabel}>Total Gasto</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>R$ {stats.averagePrice.toFixed(2)}</Text>
+                <Text style={styles.statLabel}>Preço Médio</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{stats.priceEntries}</Text>
+                <Text style={styles.statLabel}>Registros</Text>
+              </View>
+            </View>
+            {stats.lastVisit && (
+              <Text style={styles.lastVisit}>
+                Última visita: {new Date(stats.lastVisit).toLocaleDateString('pt-BR')}
+              </Text>
+            )}
           </View>
         )}
+
+        {/* Products List */}
+        <View style={styles.productsSection}>
+          <Text style={styles.sectionTitle}>
+            Produtos com Preços ({products.length})
+          </Text>
+          
+          {products.length === 0 ? (
+            <View style={styles.emptyProducts}>
+              <Ionicons name="basket-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyProductsText}>
+                Nenhum produto com preço registrado
+              </Text>
+              <Text style={styles.emptyProductsSubtext}>
+                Use a pesquisa de preços para começar a registrar
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={products}
+              renderItem={renderProductItem}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              style={styles.productsList}
+            />
+          )}
+        </View>
       </ScrollView>
-      
-      <Toast
-        visible={toast.visible}
-        message={toast.message}
-        type={toast.type}
-        onHide={hideToast}
-      />
     </SafeContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
   },
   loadingText: {
-    marginTop: 12,
+    marginTop: 16,
     fontSize: 16,
     color: '#666',
   },
@@ -313,140 +274,196 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 20,
   },
   errorText: {
-    marginTop: 12,
     fontSize: 18,
     color: '#666',
-    marginBottom: 20,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    borderBottomColor: '#e2e8f0',
   },
   backButton: {
+    marginRight: 16,
     padding: 8,
   },
-  backButtonText: {
-    color: '#4CAF50',
-    fontSize: 16,
-    fontWeight: '500',
+  headerContent: {
+    flex: 1,
   },
-  editButton: {
-    padding: 8,
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 2,
   },
   content: {
     flex: 1,
-    padding: 16,
+    backgroundColor: '#f8fafc',
   },
-  section: {
-    marginBottom: 24,
-    backgroundColor: '#f9f9f9',
-    padding: 16,
-    borderRadius: 8,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#333',
-    marginBottom: 16,
-  },
-  field: {
-    marginBottom: 16,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: 4,
-  },
-  fieldValue: {
-    fontSize: 16,
-    color: '#333',
-  },
-  input: {
+  actionSection: {
+    padding: 20,
     backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    fontSize: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    gap: 12,
   },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  editActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 16,
-  },
-  cancelButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-  },
-  saveButton: {
+  priceSearchButton: {
     backgroundColor: '#4CAF50',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  buttonDisabled: {
-    backgroundColor: '#a5d6a7',
-    opacity: 0.7,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
-  },
-  deleteButton: {
-    backgroundColor: '#ff6b6b',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    shadowColor: '#4CAF50',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  deleteButtonText: {
+  priceSearchButtonText: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
     marginLeft: 8,
+  },
+  historyButton: {
+    backgroundColor: '#f0f8f1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
+  historyButtonText: {
+    color: '#4CAF50',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  statsSection: {
+    padding: 20,
+    backgroundColor: '#fff',
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    width: '48%',
+    backgroundColor: '#f8fafc',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#4CAF50',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  lastVisit: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  productsSection: {
+    padding: 20,
+    backgroundColor: '#fff',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  emptyProducts: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyProductsText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#64748b',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptyProductsSubtext: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  productsList: {
+    marginTop: 8,
+  },
+  productItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  productItemImage: {
+    marginRight: 12,
+  },
+  productInfo: {
+    flex: 1,
+  },
+  productName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1e293b',
+    marginBottom: 2,
+  },
+  productBrand: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 2,
+  },
+  productCategory: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 2,
+  },
+  productDate: {
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  priceContainer: {
+    alignItems: 'flex-end',
+  },
+  price: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4CAF50',
   },
 });
