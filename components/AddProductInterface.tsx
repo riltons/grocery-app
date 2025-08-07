@@ -188,46 +188,95 @@ export default function AddProductInterface({
     setScannerLoading(true);
 
     try {
-      // Process the barcode using BarcodeService
-      const searchResult = await BarcodeService.searchWithFallback(result.data);
-      let productInfo = searchResult.found ? searchResult.product : null;
+      // Primeiro, verificar se o produto já existe no banco de dados local
+      const { data: existingProduct } = await ProductService.getSpecificProductByBarcode(result.data);
       
-      // Se não encontrou o produto, criar um produto básico com o código de barras
-      if (!productInfo) {
-        productInfo = {
-          barcode: result.data,
-          name: `Produto ${result.data}`,
-          brand: '',
-          category: '',
-          description: '',
-          image_url: '',
-          data_source: 'manual',
-          confidence_score: 0.5
-        };
-      }
-      
-      setScannedProduct(productInfo);
-      
-      // Usar vinculação automática melhorada
-      const autoLinkResult = await SpecificProductCreationService.autoLinkToGenericProduct(productInfo);
-      
-      if (autoLinkResult.success && autoLinkResult.genericProduct) {
-        // Vinculação automática bem-sucedida
-        console.log(`Vinculação automática: ${autoLinkResult.reason}`);
-        setSelectedGenericProduct(autoLinkResult.genericProduct);
-        setSuggestedGenericProducts([autoLinkResult.genericProduct]);
-      } else {
-        // Fallback para o método anterior se a vinculação automática falhar
-        console.log(`Vinculação automática falhou: ${autoLinkResult.reason}`);
-        const suggestions = await GenericProductMatcher.suggestGenericProducts(
-          productInfo.name, 
-          productInfo.category
-        );
-        const genericProducts = suggestions.map(s => s.product);
-        setSuggestedGenericProducts(genericProducts);
+      if (existingProduct) {
+        console.log('Produto encontrado no banco local:', existingProduct);
         
-        if (suggestions.length > 0) {
-          setSelectedGenericProduct(suggestions[0].product);
+        // Se o produto já existe, usar as informações do banco
+        const productInfo: ProductInfo = {
+          barcode: existingProduct.barcode || result.data,
+          name: existingProduct.name,
+          brand: existingProduct.brand || '',
+          category: existingProduct.generic_product?.category || '',
+          description: existingProduct.description || '',
+          image_url: existingProduct.image_url || '',
+          data_source: 'local_database',
+          confidence_score: 1.0
+        };
+        
+        setScannedProduct(productInfo);
+        
+        // Se tem produto genérico associado, usar ele
+        if (existingProduct.generic_product) {
+          console.log('Produto genérico encontrado:', existingProduct.generic_product);
+          setSelectedGenericProduct(existingProduct.generic_product);
+          setSuggestedGenericProducts([existingProduct.generic_product]);
+        } else {
+          // Se não tem produto genérico, tentar vinculação automática
+          const autoLinkResult = await SpecificProductCreationService.autoLinkToGenericProduct(productInfo);
+          
+          if (autoLinkResult.success && autoLinkResult.genericProduct) {
+            console.log(`Vinculação automática: ${autoLinkResult.reason}`);
+            setSelectedGenericProduct(autoLinkResult.genericProduct);
+            setSuggestedGenericProducts([autoLinkResult.genericProduct]);
+          } else {
+            console.log(`Vinculação automática falhou: ${autoLinkResult.reason}`);
+            const suggestions = await GenericProductMatcher.suggestGenericProducts(
+              productInfo.name, 
+              productInfo.category
+            );
+            const genericProducts = suggestions.map(s => s.product);
+            setSuggestedGenericProducts(genericProducts);
+            
+            if (suggestions.length > 0) {
+              setSelectedGenericProduct(suggestions[0].product);
+            }
+          }
+        }
+      } else {
+        // Se não existe no banco local, buscar nas APIs externas
+        const searchResult = await BarcodeService.searchWithFallback(result.data);
+        let productInfo = searchResult.found ? searchResult.product : null;
+        
+        // Se não encontrou o produto, criar um produto básico com o código de barras
+        if (!productInfo) {
+          productInfo = {
+            barcode: result.data,
+            name: `Produto ${result.data}`,
+            brand: '',
+            category: '',
+            description: '',
+            image_url: '',
+            data_source: 'manual',
+            confidence_score: 0.5
+          };
+        }
+        
+        setScannedProduct(productInfo);
+        
+        // Usar vinculação automática melhorada
+        const autoLinkResult = await SpecificProductCreationService.autoLinkToGenericProduct(productInfo);
+        
+        if (autoLinkResult.success && autoLinkResult.genericProduct) {
+          // Vinculação automática bem-sucedida
+          console.log(`Vinculação automática: ${autoLinkResult.reason}`);
+          setSelectedGenericProduct(autoLinkResult.genericProduct);
+          setSuggestedGenericProducts([autoLinkResult.genericProduct]);
+        } else {
+          // Fallback para o método anterior se a vinculação automática falhar
+          console.log(`Vinculação automática falhou: ${autoLinkResult.reason}`);
+          const suggestions = await GenericProductMatcher.suggestGenericProducts(
+            productInfo.name, 
+            productInfo.category
+          );
+          const genericProducts = suggestions.map(s => s.product);
+          setSuggestedGenericProducts(genericProducts);
+          
+          if (suggestions.length > 0) {
+            setSelectedGenericProduct(suggestions[0].product);
+          }
         }
       }
       

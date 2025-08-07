@@ -619,7 +619,12 @@ export default function ScanResultModal({
           setShowGenericSelector(false);
         }}
         suggestedProducts={suggestedGenericProducts}
-        searchQuery={editedProduct?.category || editedProduct?.name || ''}
+        searchQuery={(() => {
+          const productName = editedProduct?.name || productInfo?.name || '';
+          // Extrair apenas a primeira palavra do nome do produto
+          const firstWord = productName.split(' ')[0];
+          return firstWord;
+        })()}
       />
 
       {/* Store Selector Modal */}
