@@ -68,6 +68,56 @@ export const ProductService = {
   },
 
   /**
+   * Busca ou cria o produto genérico padrão "Outros"
+   */
+  getOrCreateDefaultGenericProduct: async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar produto genérico "Outros" existente
+      const { data: existingProduct } = await supabase
+        .from('generic_products')
+        .select('*')
+        .eq('name', 'Outros')
+        .eq('user_id', user.id)
+        .single();
+
+      if (existingProduct) {
+        return { data: existingProduct, error: null };
+      }
+
+      // Buscar ou criar categoria padrão "Outros"
+      const { CategoryService } = await import('./categories');
+      const { data: defaultCategory } = await CategoryService.getOrCreateDefaultCategory();
+
+      // Se não existe, criar o produto genérico "Outros"
+      const { data: newProduct, error } = await supabase
+        .from('generic_products')
+        .insert({
+          name: 'Outros',
+          category_id: defaultCategory?.id || null,
+          user_id: user.id,
+        })
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('Erro ao criar produto genérico padrão:', error);
+        throw error;
+      }
+
+      return { data: newProduct, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar/criar produto genérico padrão:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
    * Cria um novo produto genérico
    */
   createGenericProduct: async (product: Omit<GenericProduct, 'id' | 'created_at'>) => {

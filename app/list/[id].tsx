@@ -521,14 +521,10 @@ export default function ListDetail() {
         throw new Error('Usuário não autenticado');
       }
 
-      const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
-        name: productName,
-        category_id: null,
-        user_id: user.user.id,
-      });
+      const { data: genericProduct, error: genericError } = await ProductService.getOrCreateDefaultGenericProduct();
 
       if (genericError || !genericProduct) {
-        Alert.alert('Erro', 'Não foi possível criar o produto genérico');
+        Alert.alert('Erro', 'Não foi possível obter o produto genérico padrão');
         throw genericError;
       }
 

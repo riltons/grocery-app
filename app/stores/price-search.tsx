@@ -213,18 +213,11 @@ export default function PriceSearchScreen() {
         return;
       }
 
-      // Buscar ou criar categoria padrão
-      const { data: defaultCategory } = await CategoryService.getOrCreateDefaultCategory();
-      
-      // Criar produto genérico primeiro
-      const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
-        name: productInfo.name || `Produto ${productInfo.barcode}`,
-        category_id: defaultCategory?.id || null,
-        user_id: user.id,
-      });
+      // Buscar ou criar produto genérico padrão "Outros"
+      const { data: genericProduct, error: genericError } = await ProductService.getOrCreateDefaultGenericProduct();
 
       if (genericError || !genericProduct) {
-        throw new Error('Erro ao criar produto genérico');
+        throw new Error('Erro ao obter produto genérico padrão');
       }
 
       // Criar produto específico
@@ -284,18 +277,11 @@ export default function PriceSearchScreen() {
 
       const productName = `Produto ${barcode}`;
 
-      // Buscar ou criar categoria padrão
-      const { data: defaultCategory } = await CategoryService.getOrCreateDefaultCategory();
-
-      // Criar produto genérico
-      const { data: genericProduct, error: genericError } = await ProductService.createGenericProduct({
-        name: productName,
-        category_id: defaultCategory?.id || null,
-        user_id: user.id,
-      });
+      // Buscar ou criar produto genérico padrão "Outros"
+      const { data: genericProduct, error: genericError } = await ProductService.getOrCreateDefaultGenericProduct();
 
       if (genericError || !genericProduct) {
-        throw new Error('Erro ao criar produto genérico');
+        throw new Error('Erro ao obter produto genérico padrão');
       }
 
       // Criar produto específico
