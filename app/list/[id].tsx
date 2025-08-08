@@ -425,9 +425,6 @@ export default function ListDetail() {
             return newSet;
           });
         }, 2000);
-        
-        // Recarrega produtos frequentes
-        loadFrequentProducts();
       }
     } catch (error) {
       console.error('Erro ao adicionar produto genérico:', error);
