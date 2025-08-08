@@ -38,13 +38,7 @@
       "buildNumber": "1.0.0"
     },
     "plugins": [
-      "expo-router",
-      [
-        "expo-camera",
-        {
-          "cameraPermission": "Permitir que $(PRODUCT_NAME) acesse sua câmera para escanear códigos de barras."
-        }
-      ]
+      "expo-router"
     ]
   }
 }
