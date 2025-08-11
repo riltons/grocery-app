@@ -87,6 +87,7 @@ export type List = {
   created_at: string;
   updated_at: string;
   user_id: string;
+  status?: 'pending' | 'finished';
   is_shared?: boolean;
   share_settings?: {
     allowInvites: boolean;

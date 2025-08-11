@@ -496,4 +496,238 @@ export const ListsService = {
       return { error };
     }
   },
+
+  /**
+   * Clona uma lista criando uma nova com os mesmos produtos desmarcados
+   */
+  cloneList: async (originalListId: string, newListName?: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar a lista original
+      const { data: originalList, error: listError } = await ListsService.getListById(originalListId);
+      if (listError || !originalList) {
+        throw new Error('Lista original não encontrada');
+      }
+
+      // Buscar itens da lista original
+      const { data: originalItems, error: itemsError } = await ListsService.getListItems(originalListId);
+      if (itemsError) {
+        throw new Error('Erro ao buscar itens da lista original');
+      }
+
+      // Criar nova lista
+      const cloneName = newListName || `${originalList.name} (Cópia)`;
+      const { data: newList, error: createError } = await ListsService.createList(cloneName);
+      if (createError || !newList) {
+        throw new Error('Erro ao criar nova lista');
+      }
+
+      // Adicionar itens à nova lista (desmarcados)
+      if (originalItems && originalItems.length > 0) {
+        const itemPromises = originalItems.map(item => 
+          ListsService.addListItem(newList.id, {
+            product_name: item.product_name,
+            quantity: item.quantity,
+            unit: item.unit,
+            checked: false, // Sempre desmarcado
+            product_id: item.product_id || undefined,
+            generic_product_id: item.generic_product_id || undefined,
+          })
+        );
+
+        await Promise.all(itemPromises);
+      }
+
+      return { data: newList, error: null };
+    } catch (error) {
+      console.error('Erro ao clonar lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Finaliza uma lista, opcionalmente criando nova lista com itens não comprados
+   */
+  finishList: async (listId: string, createNewListWithPending: boolean = false) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar lista e itens
+      const { data: list, error: listError } = await ListsService.getListById(listId);
+      if (listError || !list) {
+        throw new Error('Lista não encontrada');
+      }
+
+      const { data: items, error: itemsError } = await ListsService.getListItems(listId);
+      if (itemsError) {
+        throw new Error('Erro ao buscar itens da lista');
+      }
+
+      let newList = null;
+
+      // Se solicitado, criar nova lista com itens não comprados
+      if (createNewListWithPending && items) {
+        const pendingItems = items.filter(item => !item.checked);
+        
+        if (pendingItems.length > 0) {
+          const newListName = `${list.name} (Pendentes)`;
+          const { data: createdList, error: createError } = await ListsService.createList(newListName);
+          
+          if (createError || !createdList) {
+            throw new Error('Erro ao criar lista com itens pendentes');
+          }
+
+          newList = createdList;
+
+          // Adicionar itens pendentes à nova lista
+          const itemPromises = pendingItems.map(item => 
+            ListsService.addListItem(createdList.id, {
+              product_name: item.product_name,
+              quantity: item.quantity,
+              unit: item.unit,
+              checked: false,
+              product_id: item.product_id || undefined,
+              generic_product_id: item.generic_product_id || undefined,
+            })
+          );
+
+          await Promise.all(itemPromises);
+        }
+      }
+
+      // Marcar lista original como finalizada
+      await ListsService.markListAsFinished(listId);
+
+      return { 
+        data: { 
+          finishedList: list, 
+          newListWithPending: newList 
+        }, 
+        error: null 
+      };
+    } catch (error) {
+      console.error('Erro ao finalizar lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Marca uma lista como finalizada
+   */
+  markListAsFinished: async (listId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('lists')
+        .update({ 
+          status: 'finished',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', listId)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao finalizar lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Busca listas pendentes do usuário
+   * Fallback para getUserLists se a coluna status não existir
+   */
+  getPendingLists: async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Tentar buscar com filtro de status
+      const { data, error } = await supabase
+        .from('lists')
+        .select('*')
+        .eq('user_id', user.id)
+        .or('status.is.null,status.eq.pending')
+        .order('updated_at', { ascending: false });
+
+      // Se der erro de coluna não existir, usar getUserLists e filtrar localmente
+      if (error && error.code === '42703') {
+        const { data: allLists, error: fallbackError } = await ListsService.getUserLists();
+        if (fallbackError) throw fallbackError;
+        
+        const pendingLists = (allLists || []).filter(list => !list.status || list.status === 'pending');
+        return { data: pendingLists, error: null };
+      }
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar listas pendentes:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Busca listas finalizadas do usuário
+   * Fallback para getUserLists se a coluna status não existir
+   */
+  getFinishedLists: async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Tentar buscar com filtro de status
+      const { data, error } = await supabase
+        .from('lists')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'finished')
+        .order('updated_at', { ascending: false });
+
+      // Se der erro de coluna não existir, usar getUserLists e filtrar localmente
+      if (error && error.code === '42703') {
+        const { data: allLists, error: fallbackError } = await ListsService.getUserLists();
+        if (fallbackError) throw fallbackError;
+        
+        const finishedLists = (allLists || []).filter(list => list.status === 'finished');
+        return { data: finishedLists, error: null };
+      }
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar listas finalizadas:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Verifica se uma lista está finalizada
+   */
+  isListFinished: (list: List) => {
+    return list.status === 'finished';
+  },
 };

@@ -53,6 +53,20 @@ Implementações Recentes
 
 **Funcionalidade**: Loja selecionada persiste entre sessões. Cada lista mantém sua própria loja. Usuário pode trocar ou limpar loja através do indicador no cabeçalho.
 
+### ✅ Gerenciamento de Status de Listas (Janeiro 2025)
+- [x] Campo status na tabela lists (pending/finished)
+- [x] Bloqueio de edição para listas finalizadas
+- [x] Separação de listas em pendentes e finalizadas na página inicial
+- [x] Botões de edição e exclusão de listas
+- [x] Modal EditListModal para alterar nome das listas
+- [x] Interface adaptativa baseada no status da lista
+- [x] Indicadores visuais para listas finalizadas
+- [x] Funções de serviço para gerenciar status
+- [x] Migração SQL para adicionar coluna status
+- [x] Documentação completa do sistema
+
+**Funcionalidade**: Listas podem ser finalizadas e ficam em modo somente leitura. Página inicial separada em abas (Pendentes/Finalizadas). Botões para editar nome e excluir listas.
+
 ## Próximas Implementações
 
 ### Sistema de Notificações

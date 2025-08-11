@@ -11,6 +11,7 @@ import PriceInputModal from '../../components/PriceInputModal';
 import PriceEditModal from '../../components/PriceEditModal';
 import ProductSubstitutionModal from '../../components/ProductSubstitutionModal';
 import StoreSelectionModal from '../../components/StoreSelectionModal';
+import ListFinishModal from '../../components/ListFinishModal';
 import QuantitySelector from '../../components/QuantitySelector';
 import SafeContainer from '../../components/SafeContainer';
 import AnimatedListItem from '../../components/AnimatedListItem';
@@ -64,6 +65,7 @@ export default function ListDetail() {
   const [priceEditModalVisible, setPriceEditModalVisible] = useState(false);
   const [substitutionModalVisible, setSubstitutionModalVisible] = useState(false);
   const [storeSelectionModalVisible, setStoreSelectionModalVisible] = useState(false);
+  const [finishModalVisible, setFinishModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ListItem | null>(null);
   const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
@@ -71,6 +73,9 @@ export default function ListDetail() {
   const [scrollQueue, setScrollQueue] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const router = useRouter();
+
+  // Verificar se a lista está finalizada
+  const isListFinished = list?.status === 'finished';
 
   // Funções para persistir a loja selecionada
   const saveSelectedStore = async (store: Store | null) => {
@@ -364,6 +369,11 @@ export default function ListDetail() {
 
   // Função para adicionar um novo item à lista (produto manual)
   const handleAddProduct = async (productName: string, quantity: number, unit: string) => {
+    if (isListFinished) {
+      Alert.alert('Lista Finalizada', 'Esta lista foi finalizada e não pode mais ser editada.');
+      return;
+    }
+
     try {
       // Verificar se produto já existe
       if (checkDuplicateProduct(productName)) {
@@ -714,6 +724,11 @@ export default function ListDetail() {
 
   // Função para marcar/desmarcar um item
   const handleToggleItem = async (item: ListItem) => {
+    if (isListFinished) {
+      Alert.alert('Lista Finalizada', 'Esta lista foi finalizada e não pode mais ser editada.');
+      return;
+    }
+
     try {
       // Se está marcando como comprado
       if (!item.checked) {
@@ -768,6 +783,72 @@ export default function ListDetail() {
   const clearSelectedStore = () => {
     setSelectedStore(null);
     saveSelectedStore(null);
+  };
+
+  // Função para finalizar lista
+  const handleFinishList = async (createNewListWithPending: boolean) => {
+    try {
+      setAddingItem(true);
+      
+      const { data, error } = await ListsService.finishList(id, createNewListWithPending);
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível finalizar a lista');
+        return;
+      }
+
+      if (data?.newListWithPending) {
+        Alert.alert(
+          'Lista Finalizada!',
+          `Lista finalizada com sucesso!\n\nUma nova lista "${data.newListWithPending.name}" foi criada com os itens pendentes.`,
+          [
+            { text: 'Ver Nova Lista', onPress: () => router.replace(`/list/${data.newListWithPending!.id}`) },
+            { text: 'Voltar ao Início', onPress: () => router.replace('/') }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Lista Finalizada!',
+          'Lista finalizada com sucesso!',
+          [
+            { text: 'OK', onPress: () => router.replace('/') }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Erro ao finalizar lista:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao finalizar a lista');
+    } finally {
+      setAddingItem(false);
+    }
+  };
+
+  // Função para clonar lista
+  const handleCloneList = async () => {
+    try {
+      setAddingItem(true);
+      
+      const { data: clonedList, error } = await ListsService.cloneList(id);
+      
+      if (error || !clonedList) {
+        Alert.alert('Erro', 'Não foi possível clonar a lista');
+        return;
+      }
+
+      Alert.alert(
+        'Lista Clonada!',
+        `A lista "${clonedList.name}" foi criada com todos os produtos desmarcados.`,
+        [
+          { text: 'Ver Lista Clonada', onPress: () => router.push(`/list/${clonedList.id}`) },
+          { text: 'Continuar Aqui', style: 'cancel' }
+        ]
+      );
+    } catch (error) {
+      console.error('Erro ao clonar lista:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao clonar a lista');
+    } finally {
+      setAddingItem(false);
+    }
   };
 
   // Função para confirmar item comprado com preço e quantidade
@@ -1162,7 +1243,13 @@ export default function ListDetail() {
           <Text style={styles.title} numberOfLines={1}>
             {list?.name || 'Detalhes da Lista'}
           </Text>
-          {selectedStore && (
+          {isListFinished && (
+            <View style={styles.finishedIndicator}>
+              <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+              <Text style={styles.finishedIndicatorText}>Finalizada</Text>
+            </View>
+          )}
+          {selectedStore && !isListFinished && (
             <TouchableOpacity 
               style={styles.storeIndicator}
               onPress={() => setStoreSelectionModalVisible(true)}
@@ -1174,23 +1261,39 @@ export default function ListDetail() {
             </TouchableOpacity>
           )}
         </View>
-        <View style={{ width: 24 }} />
+        <TouchableOpacity 
+          style={styles.finishButton}
+          onPress={() => setFinishModalVisible(true)}
+          disabled={addingItem}
+        >
+          <Ionicons name="checkmark-done" size={20} color="#4CAF50" />
+        </TouchableOpacity>
       </View>
 
 
 
-      <AddProductInterface
-        onAddProduct={handleAddProduct}
-        onSelectProduct={handleSelectProduct}
-        onSelectGenericProduct={handleSelectGenericProduct}
-        onCreateNewProduct={handleCreateNewProduct}
-        onCreateNewProductWithCategory={handleCreateNewProductWithCategory}
-        suggestions={suggestions}
-        loading={addingItem}
-        currentListProductIds={items.filter(item => item.product_id).map(item => item.product_id!)}
-        currentListProductNames={items.map(item => item.product_name)}
-        listId={id}
-      />
+      {!isListFinished && (
+        <AddProductInterface
+          onAddProduct={handleAddProduct}
+          onSelectProduct={handleSelectProduct}
+          onSelectGenericProduct={handleSelectGenericProduct}
+          onCreateNewProduct={handleCreateNewProduct}
+          onCreateNewProductWithCategory={handleCreateNewProductWithCategory}
+          suggestions={suggestions}
+          loading={addingItem}
+          currentListProductIds={items.filter(item => item.product_id).map(item => item.product_id!)}
+          currentListProductNames={items.map(item => item.product_name)}
+          listId={id}
+        />
+      )}
+
+      {isListFinished && (
+        <View style={styles.finishedMessage}>
+          <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+          <Text style={styles.finishedMessageText}>Esta lista foi finalizada</Text>
+          <Text style={styles.finishedMessageSubtext}>Não é possível fazer mais alterações</Text>
+        </View>
+      )}
 
       <PriceInputModal
         visible={priceModalVisible}
@@ -1244,6 +1347,16 @@ export default function ListDetail() {
         hasSelectedStore={!!selectedStore}
       />
 
+      <ListFinishModal
+        visible={finishModalVisible}
+        onClose={() => setFinishModalVisible(false)}
+        onFinish={handleFinishList}
+        listName={list?.name || 'Lista'}
+        pendingItemsCount={pendingItems.length}
+        completedItemsCount={completedItems.length}
+        loading={addingItem}
+      />
+
 
 
       {items.length === 0 ? (
@@ -1287,9 +1400,19 @@ export default function ListDetail() {
               {completedItems.length > 0 && (
                 <View style={styles.section}>
                   <View style={styles.completedHeader}>
-                    <Text style={styles.sectionTitle}>
-                      Comprados ({completedItems.length})
-                    </Text>
+                    <View style={styles.completedTitleContainer}>
+                      <Text style={styles.sectionTitle}>
+                        Comprados ({completedItems.length})
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.cloneButton}
+                        onPress={handleCloneList}
+                        disabled={addingItem}
+                      >
+                        <Ionicons name="copy" size={16} color="#4CAF50" />
+                        <Text style={styles.cloneButtonText}>Clonar Lista</Text>
+                      </TouchableOpacity>
+                    </View>
                     {totalValue > 0 && (
                       <Text style={styles.totalValue}>
                         Total: {totalValue.toLocaleString('pt-BR', {
@@ -1364,6 +1487,48 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 4,
   },
+  finishedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8f1',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  finishedIndicatorText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  finishedMessage: {
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#f8f9fa',
+    marginHorizontal: 16,
+    marginVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  finishedMessageText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  finishedMessageSubtext: {
+    fontSize: 14,
+    color: '#6c757d',
+    textAlign: 'center',
+  },
+  finishButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0f8f1',
+  },
 
 
   listContainer: {
@@ -1398,6 +1563,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     paddingHorizontal: 4,
+  },
+  completedTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cloneButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8f1',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  cloneButtonText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '500',
   },
   totalValue: {
     fontSize: 16,
