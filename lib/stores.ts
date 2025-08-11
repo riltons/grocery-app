@@ -8,6 +8,35 @@ export const StoreService = {
   /**
    * Busca todas as lojas do usuário
    */
+  getUserStores: async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('stores')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('name');
+
+      if (error) {
+        console.error('Erro ao buscar lojas:', error);
+        throw error;
+      }
+
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar lojas:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Busca todas as lojas do usuário (alias para getUserStores)
+   */
   getStores: async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();

@@ -3,17 +3,19 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState, useEffect, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ListsService } from '../../lib/lists';
 import { ProductService, getCategoryNameById } from '../../lib/products';
 import AddProductInterface from '../../components/AddProductInterface';
 import PriceInputModal from '../../components/PriceInputModal';
 import PriceEditModal from '../../components/PriceEditModal';
 import ProductSubstitutionModal from '../../components/ProductSubstitutionModal';
+import StoreSelectionModal from '../../components/StoreSelectionModal';
 import QuantitySelector from '../../components/QuantitySelector';
 import SafeContainer from '../../components/SafeContainer';
 import AnimatedListItem from '../../components/AnimatedListItem';
 import { supabase } from '../../lib/supabase';
-import type { SpecificProduct, GenericProduct } from '../../lib/supabase';
+import type { SpecificProduct, GenericProduct, Store } from '../../lib/supabase';
 
 // Tipos para a lista e seus itens
 type List = {
@@ -61,12 +63,49 @@ export default function ListDetail() {
   const [priceModalVisible, setPriceModalVisible] = useState(false);
   const [priceEditModalVisible, setPriceEditModalVisible] = useState(false);
   const [substitutionModalVisible, setSubstitutionModalVisible] = useState(false);
+  const [storeSelectionModalVisible, setStoreSelectionModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ListItem | null>(null);
   const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
+  const [selectedStore, setSelectedStore] = useState<Store | null>(null);
   const [newlyAddedItems, setNewlyAddedItems] = useState<Set<string>>(new Set());
   const [scrollQueue, setScrollQueue] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
   const router = useRouter();
+
+  // Funções para persistir a loja selecionada
+  const saveSelectedStore = async (store: Store | null) => {
+    try {
+      const key = `selectedStore_${id}`;
+      console.log('🏪 SALVANDO LOJA:', { key, store: store?.name });
+      if (store) {
+        await AsyncStorage.setItem(key, JSON.stringify(store));
+        console.log('✅ Loja salva com sucesso');
+      } else {
+        await AsyncStorage.removeItem(key);
+        console.log('🗑️ Loja removida com sucesso');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao salvar loja selecionada:', error);
+    }
+  };
+
+  const loadSelectedStore = async () => {
+    try {
+      const key = `selectedStore_${id}`;
+      console.log('🔍 CARREGANDO LOJA:', { key });
+      const storedStore = await AsyncStorage.getItem(key);
+      console.log('📦 Dados encontrados:', storedStore);
+      if (storedStore) {
+        const store = JSON.parse(storedStore) as Store;
+        console.log('🏪 Loja carregada:', store.name);
+        setSelectedStore(store);
+      } else {
+        console.log('❌ Nenhuma loja encontrada');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar loja selecionada:', error);
+    }
+  };
 
   // Função para navegar para um item específico na lista
   const scrollToItem = (itemId: string) => {
@@ -206,14 +245,21 @@ export default function ListDetail() {
 
   // Carregar detalhes quando o componente montar
   useEffect(() => {
+    console.log('🚀 COMPONENTE MONTADO - Lista ID:', id);
     fetchListDetails();
     loadSuggestions();
+    loadSelectedStore();
   }, [id]);
 
   // Reorganizar itens quando a lista mudar
   useEffect(() => {
     organizeItems(items);
   }, [items]);
+
+  // Monitorar mudanças na loja selecionada
+  useEffect(() => {
+    console.log('🏪 ESTADO DA LOJA MUDOU:', selectedStore?.name || 'null');
+  }, [selectedStore]);
 
   // Detectar se deve abrir o GenericProductSelector automaticamente após criar produto
   useEffect(() => {
@@ -669,8 +715,19 @@ export default function ListDetail() {
   // Função para marcar/desmarcar um item
   const handleToggleItem = async (item: ListItem) => {
     try {
-      // Se está marcando como comprado e não tem preço, mostrar modal
+      // Se está marcando como comprado
       if (!item.checked) {
+        // Verificar se é o primeiro produto sendo marcado como comprado
+        const hasCompletedItems = completedItems.length > 0;
+        
+        if (!hasCompletedItems && !selectedStore) {
+          // É o primeiro produto e não há loja selecionada - mostrar modal de seleção de loja
+          setSelectedItem(item);
+          setStoreSelectionModalVisible(true);
+          return;
+        }
+        
+        // Já há loja selecionada ou já há itens comprados - mostrar modal de preço
         setSelectedItem(item);
         setPriceModalVisible(true);
         return;
@@ -694,14 +751,44 @@ export default function ListDetail() {
     }
   };
 
-  // Função para confirmar item comprado com preço
-  const handleConfirmPurchase = async (price: number) => {
+  // Função para lidar com a seleção de loja
+  const handleStoreSelection = (store: Store) => {
+    console.log('🎯 SELECIONANDO LOJA:', store.name);
+    setSelectedStore(store);
+    saveSelectedStore(store); // Salvar a loja selecionada
+    setStoreSelectionModalVisible(false);
+    
+    // Após selecionar a loja, mostrar o modal de preço
+    if (selectedItem) {
+      setPriceModalVisible(true);
+    }
+  };
+
+  // Função para limpar a loja selecionada
+  const clearSelectedStore = () => {
+    setSelectedStore(null);
+    saveSelectedStore(null);
+  };
+
+  // Função para confirmar item comprado com preço e quantidade
+  const handleConfirmPurchase = async (price: number, quantity: number) => {
     if (!selectedItem) return;
 
     try {
+      let finalPrice = price;
+      
+      // Se não informou preço (price = 0), tentar buscar o último preço registrado
+      if (price === 0 && selectedItem.product_id) {
+        const { data: lastPrice } = await ProductService.getLastProductPrice(selectedItem.product_id);
+        if (lastPrice && lastPrice.price) {
+          finalPrice = lastPrice.price;
+        }
+      }
+      
       const updates = {
         checked: true,
-        price: price > 0 ? price : null
+        price: finalPrice > 0 ? finalPrice : null,
+        quantity: quantity
       };
       
       const { error } = await ListsService.updateListItem(id, selectedItem.id, updates);
@@ -710,6 +797,15 @@ export default function ListDetail() {
         Alert.alert('Erro', 'Não foi possível atualizar o item');
         throw error;
       } else {
+        // Se há preço e produto específico e loja selecionada, salvar no histórico
+        if (finalPrice > 0 && selectedItem.product_id && selectedStore) {
+          await ProductService.addProductPrice(selectedItem.product_id, {
+            store_id: selectedStore.id,
+            price: finalPrice,
+            date: new Date().toISOString(),
+          });
+        }
+        
         // Atualiza o item na lista local
         setItems(prevItems =>
           prevItems.map(i => (i.id === selectedItem.id ? { ...i, ...updates } : i))
@@ -874,28 +970,35 @@ export default function ListDetail() {
     }
   };
 
-
-
-  // Função para confirmar edição de preço
-  const handleConfirmPriceEdit = async (price: number | null) => {
+  // Função para confirmar edição de preço e quantidade
+  const handleConfirmPriceEdit = async (price: number | null, quantity: number) => {
     if (!selectedItem) return;
 
     try {
-      const updates = { price };
+      const updates = { price, quantity };
       
       const { error } = await ListsService.updateListItem(id, selectedItem.id, updates);
       
       if (error) {
-        Alert.alert('Erro', 'Não foi possível atualizar o preço');
+        Alert.alert('Erro', 'Não foi possível atualizar o item');
         throw error;
       } else {
+        // Se há preço e produto específico e loja selecionada, salvar no histórico
+        if (price && price > 0 && selectedItem.product_id && selectedStore) {
+          await ProductService.addProductPrice(selectedItem.product_id, {
+            store_id: selectedStore.id,
+            price: price,
+            date: new Date().toISOString(),
+          });
+        }
+        
         // Atualiza o item na lista local
         setItems(prevItems =>
           prevItems.map(i => (i.id === selectedItem.id ? { ...i, ...updates } : i))
         );
       }
     } catch (error) {
-      console.error('Erro ao editar preço:', error);
+      console.error('Erro ao editar item:', error);
       throw error;
     }
   };
@@ -963,29 +1066,46 @@ export default function ListDetail() {
         )}
         <View style={styles.itemDetails}>
           <View style={styles.quantityContainer}>
-            <QuantitySelector
-              quantity={item.quantity}
-              onIncrease={() => handleIncreaseQuantity(item)}
-              onDecrease={() => handleDecreaseQuantity(item)}
-              disabled={item.checked}
-            />
-            <Text style={[styles.unitText, item.checked && styles.itemQuantityChecked]}>
-              {item.unit}
-            </Text>
+            {item.checked ? (
+              <TouchableOpacity 
+                style={styles.editableQuantity}
+                onPress={() => handleEditPrice(item)}
+              >
+                <Text style={styles.quantityText}>{item.quantity}</Text>
+                <Text style={styles.unitText}>{item.unit}</Text>
+                <Ionicons name="pencil" size={14} color="#4CAF50" />
+              </TouchableOpacity>
+            ) : (
+              <>
+                <QuantitySelector
+                  quantity={item.quantity}
+                  onIncrease={() => handleIncreaseQuantity(item)}
+                  onDecrease={() => handleDecreaseQuantity(item)}
+                  disabled={false}
+                />
+                <Text style={styles.unitText}>
+                  {item.unit}
+                </Text>
+              </>
+            )}
           </View>
           {(item.category || getCategoryNameById(item.category_id)) && (
             <Text style={[styles.itemCategory, item.checked && styles.itemCategoryChecked]}>
               • {(item.category || getCategoryNameById(item.category_id))}
             </Text>
           )}
-          {item.price && item.checked && (
-            <TouchableOpacity onPress={() => handleEditPrice(item)}>
+          {item.checked && (
+            <TouchableOpacity 
+              style={styles.priceContainer}
+              onPress={() => handleEditPrice(item)}
+            >
               <Text style={styles.itemPrice}>
-                • {(item.price * item.quantity).toLocaleString('pt-BR', {
+                • {item.price ? (item.price * item.quantity).toLocaleString('pt-BR', {
                   style: 'currency',
                   currency: 'BRL'
-                })}
+                }) : 'Sem preço'}
               </Text>
+              <Ionicons name="pencil" size={12} color="#4CAF50" />
             </TouchableOpacity>
           )}
         </View>
@@ -1038,9 +1158,22 @@ export default function ListDetail() {
         >
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.title} numberOfLines={1}>
-          {list?.name || 'Detalhes da Lista'}
-        </Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title} numberOfLines={1}>
+            {list?.name || 'Detalhes da Lista'}
+          </Text>
+          {selectedStore && (
+            <TouchableOpacity 
+              style={styles.storeIndicator}
+              onPress={() => setStoreSelectionModalVisible(true)}
+            >
+              <Ionicons name="storefront" size={14} color="#4CAF50" />
+              <Text style={styles.storeIndicatorText} numberOfLines={1}>
+                {selectedStore.name}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <View style={{ width: 24 }} />
       </View>
 
@@ -1070,6 +1203,7 @@ export default function ListDetail() {
         quantity={selectedItem?.quantity || 0}
         unit={selectedItem?.unit || ''}
         loading={addingItem}
+        storeName={selectedStore?.name}
       />
 
       <PriceEditModal
@@ -1096,6 +1230,18 @@ export default function ListDetail() {
         onSubstitute={handleConfirmSubstitution}
         genericProduct={selectedGenericProduct}
         currentProductName={selectedItem?.product_name || ''}
+      />
+
+      <StoreSelectionModal
+        visible={storeSelectionModalVisible}
+        onClose={() => {
+          setStoreSelectionModalVisible(false);
+          setSelectedItem(null);
+        }}
+        onSelectStore={handleStoreSelection}
+        onClearStore={clearSelectedStore}
+        title="Onde você está comprando?"
+        hasSelectedStore={!!selectedStore}
       />
 
 
@@ -1193,11 +1339,30 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    flex: 1,
     textAlign: 'center',
+  },
+  storeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8f1',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+    maxWidth: 200,
+  },
+  storeIndicatorText: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginLeft: 4,
   },
 
 
@@ -1302,6 +1467,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 8,
   },
+  editableQuantity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8f1',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+  },
   quantityText: {
     fontSize: 14,
     fontWeight: '600',
@@ -1311,6 +1486,7 @@ const styles = StyleSheet.create({
   unitText: {
     fontSize: 14,
     color: '#666',
+    marginRight: 4,
   },
   itemQuantity: {
     fontSize: 14,
@@ -1329,11 +1505,20 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
     color: '#bbb',
   },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f8f1',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
   itemPrice: {
     fontSize: 12,
     color: '#4CAF50',
     fontWeight: '600',
-    marginLeft: 8,
+    marginRight: 4,
   },
   itemActions: {
     flexDirection: 'row',

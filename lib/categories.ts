@@ -6,6 +6,32 @@ import type { Category } from './supabase';
  */
 export const CategoryService = {
   /**
+   * Busca uma categoria pelo ID
+   */
+  getCategoryById: async (id: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar categoria:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
    * Busca todas as categorias do usuário
    */
   getCategories: async () => {

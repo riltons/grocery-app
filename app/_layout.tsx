@@ -19,6 +19,7 @@ export default function RootLayout() {
           >
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="home" options={{ headerShown: false }} />
             <Stack.Screen 
               name="list/[id]" 
@@ -29,10 +30,14 @@ export default function RootLayout() {
             />
             <Stack.Screen name="stores/index" options={{ headerShown: false }} />
             <Stack.Screen name="stores/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="stores/new" options={{ headerShown: false }} />
             <Stack.Screen name="stores/price-search" options={{ headerShown: false }} />
             <Stack.Screen name="stores/sessions/[storeId]" options={{ headerShown: false }} />
             <Stack.Screen name="stores/session/[sessionId]" options={{ headerShown: false }} />
+            <Stack.Screen name="stores/search-history/[storeId]" options={{ headerShown: false }} />
             <Stack.Screen name="product/index" options={{ headerShown: false }} />
+            <Stack.Screen name="product/new" options={{ headerShown: false }} />
+            <Stack.Screen name="product/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="categories/index" options={{ headerShown: false }} />
           </Stack>
         </ToastProvider>

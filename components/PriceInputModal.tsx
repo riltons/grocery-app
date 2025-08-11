@@ -14,13 +14,14 @@ import ProductImage from './ProductImage';
 interface PriceInputModalProps {
   visible: boolean;
   onClose: () => void;
-  onConfirm: (price: number) => Promise<void>;
+  onConfirm: (price: number, quantity: number) => Promise<void>;
   productName: string;
   productBrand?: string;
   productImage?: string;
   quantity?: number;
   unit?: string;
   currentPrice?: number;
+  storeName?: string;
 }
 
 export default function PriceInputModal({
@@ -33,18 +34,23 @@ export default function PriceInputModal({
   quantity,
   unit,
   currentPrice,
+  storeName,
 }: PriceInputModalProps) {
   const [price, setPrice] = useState('');
+  const [currentQuantity, setCurrentQuantity] = useState(quantity || 1);
   const [saving, setSaving] = useState(false);
 
-  // Atualizar preço quando o modal abrir com preço atual
+  // Atualizar preço e quantidade quando o modal abrir
   React.useEffect(() => {
-    if (visible && currentPrice !== undefined) {
-      setPrice(currentPrice.toFixed(2).replace('.', ','));
-    } else if (visible) {
-      setPrice('');
+    if (visible) {
+      if (currentPrice !== undefined) {
+        setPrice(currentPrice.toFixed(2).replace('.', ','));
+      } else {
+        setPrice('');
+      }
+      setCurrentQuantity(quantity || 1);
     }
-  }, [visible, currentPrice]);
+  }, [visible, currentPrice, quantity]);
 
   const handleConfirm = async () => {
     const priceValue = parseFloat(price.replace(',', '.'));
@@ -53,10 +59,15 @@ export default function PriceInputModal({
       return;
     }
 
+    if (currentQuantity <= 0) {
+      return;
+    }
+
     try {
       setSaving(true);
-      await onConfirm(priceValue);
+      await onConfirm(priceValue, currentQuantity);
       setPrice('');
+      setCurrentQuantity(1);
       onClose();
     } catch (error) {
       console.error('Erro ao salvar preço:', error);
@@ -68,14 +79,23 @@ export default function PriceInputModal({
   const handleSkip = async () => {
     try {
       setSaving(true);
-      await onConfirm(0); // Preço zero indica que foi pulado
+      await onConfirm(0, currentQuantity); // Preço zero indica que foi pulado
       setPrice('');
+      setCurrentQuantity(1);
       onClose();
     } catch (error) {
       console.error('Erro ao marcar item:', error);
     } finally {
       setSaving(false);
     }
+  };
+
+  const increaseQuantity = () => {
+    setCurrentQuantity(prev => prev + 1);
+  };
+
+  const decreaseQuantity = () => {
+    setCurrentQuantity(prev => Math.max(1, prev - 1));
   };
 
   const formatPrice = (text: string) => {
@@ -94,7 +114,15 @@ export default function PriceInputModal({
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>Adicionar Preço</Text>
+            <View>
+              <Text style={styles.title}>Adicionar Preço</Text>
+              {storeName && (
+                <View style={styles.storeInfo}>
+                  <Ionicons name="storefront" size={14} color="#4CAF50" />
+                  <Text style={styles.storeText}>{storeName}</Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity onPress={onClose} disabled={saving}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -113,12 +141,31 @@ export default function PriceInputModal({
                 {productBrand && (
                   <Text style={styles.productBrand}>{productBrand}</Text>
                 )}
-                {quantity && unit && (
-                  <Text style={styles.productQuantity}>
-                    {quantity} {unit}
-                  </Text>
-                )}
               </View>
+            </View>
+          </View>
+
+          <View style={styles.quantityContainer}>
+            <Text style={styles.inputLabel}>Quantidade</Text>
+            <View style={styles.quantitySelector}>
+              <TouchableOpacity
+                style={[styles.quantityButton, saving && styles.buttonDisabled]}
+                onPress={decreaseQuantity}
+                disabled={saving || currentQuantity <= 1}
+              >
+                <Ionicons name="remove" size={20} color={currentQuantity <= 1 ? '#ccc' : '#666'} />
+              </TouchableOpacity>
+              <View style={styles.quantityDisplay}>
+                <Text style={styles.quantityText}>{currentQuantity}</Text>
+                <Text style={styles.unitText}>{unit || 'un'}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.quantityButton, saving && styles.buttonDisabled]}
+                onPress={increaseQuantity}
+                disabled={saving}
+              >
+                <Ionicons name="add" size={20} color="#666" />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -132,7 +179,6 @@ export default function PriceInputModal({
                 value={price}
                 onChangeText={formatPrice}
                 keyboardType="decimal-pad"
-                autoFocus
                 editable={!saving}
               />
             </View>
@@ -200,13 +246,24 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 20,
   },
   title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
+  },
+  storeInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  storeText: {
+    fontSize: 14,
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginLeft: 4,
   },
   productInfo: {
     backgroundColor: '#f8f9fa',
@@ -238,6 +295,38 @@ const styles = StyleSheet.create({
   productQuantity: {
     fontSize: 14,
     color: '#94a3b8',
+  },
+  quantityContainer: {
+    marginBottom: 20,
+  },
+  quantitySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    paddingVertical: 8,
+  },
+  quantityButton: {
+    padding: 12,
+    borderRadius: 6,
+  },
+  quantityDisplay: {
+    alignItems: 'center',
+    marginHorizontal: 20,
+    minWidth: 60,
+  },
+  quantityText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  unitText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
   inputContainer: {
     marginBottom: 24,

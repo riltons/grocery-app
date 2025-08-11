@@ -11,6 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SafeContainer from '../../components/SafeContainer';
 import ProductImage from '../../components/ProductImage';
 import { useToast } from '../../context/ToastContext';
@@ -45,6 +46,7 @@ export default function StoreDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { showError } = useToast();
+  const insets = useSafeAreaInsets();
   const [store, setStore] = useState<Store | null>(null);
   const [stats, setStats] = useState<StoreStats | null>(null);
   const [products, setProducts] = useState<ProductWithPrice[]>([]);
@@ -108,6 +110,12 @@ export default function StoreDetailScreen() {
     router.push(`/stores/sessions/${store.id}`);
   };
 
+  const handleViewSearchHistory = () => {
+    if (!store) return;
+    
+    router.push(`/stores/search-history/${store.id}`);
+  };
+
   const renderProductItem = ({ item }: { item: ProductWithPrice }) => (
     <View style={styles.productItem}>
       <ProductImage 
@@ -158,7 +166,7 @@ export default function StoreDetailScreen() {
   }
 
   return (
-    <SafeContainer>
+    <SafeContainer style={{ paddingBottom: 0 }}>
       <StatusBar style="dark" />
       
       {/* Header */}
@@ -178,7 +186,11 @@ export default function StoreDetailScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Action Buttons */}
         <View style={styles.actionSection}>
           <TouchableOpacity
@@ -189,13 +201,23 @@ export default function StoreDetailScreen() {
             <Text style={styles.priceSearchButtonText}>Pesquisar Preços</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity
-            style={styles.historyButton}
-            onPress={handleViewHistory}
-          >
-            <Ionicons name="receipt-outline" size={20} color="#4CAF50" />
-            <Text style={styles.historyButtonText}>Ver Histórico</Text>
-          </TouchableOpacity>
+          <View style={styles.secondaryButtons}>
+            <TouchableOpacity
+              style={styles.historyButton}
+              onPress={handleViewHistory}
+            >
+              <Ionicons name="receipt-outline" size={18} color="#4CAF50" />
+              <Text style={styles.historyButtonText}>Histórico</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.searchHistoryButton}
+              onPress={handleViewSearchHistory}
+            >
+              <Ionicons name="search-outline" size={18} color="#4CAF50" />
+              <Text style={styles.searchHistoryButtonText}>Pesquisas</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Statistics */}
@@ -254,6 +276,9 @@ export default function StoreDetailScreen() {
             />
           )}
         </View>
+        
+        {/* Bottom Spacer */}
+        <View style={[styles.bottomSpacer, { height: Math.max(80, insets.bottom + 80) }]} />
       </ScrollView>
     </SafeContainer>
   );
@@ -309,6 +334,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8fafc',
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   actionSection: {
     padding: 20,
     backgroundColor: '#fff',
@@ -339,22 +367,50 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 8,
   },
+  secondaryButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
   historyButton: {
+    flex: 1,
     backgroundColor: '#f0f8f1',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#4CAF50',
+    minHeight: 44,
   },
   historyButtonText: {
     color: '#4CAF50',
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
-    marginLeft: 8,
+    marginLeft: 4,
+    textAlign: 'center',
+  },
+  searchHistoryButton: {
+    flex: 1,
+    backgroundColor: '#f0f8f1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    minHeight: 44,
+  },
+  searchHistoryButtonText: {
+    color: '#4CAF50',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 4,
+    textAlign: 'center',
   },
   statsSection: {
     padding: 20,
@@ -401,7 +457,9 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#fff',
     marginTop: 8,
-    marginBottom: 20,
+  },
+  bottomSpacer: {
+    // Height será definido dinamicamente no componente
   },
   emptyProducts: {
     alignItems: 'center',

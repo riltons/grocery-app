@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 type PriceEditModalProps = {
   visible: boolean;
   onClose: () => void;
-  onConfirm: (price: number | null) => Promise<void>;
+  onConfirm: (price: number | null, quantity: number) => Promise<void>;
   productName: string;
   currentPrice?: number;
   quantity: number;
@@ -24,14 +24,16 @@ export default function PriceEditModal({
   loading = false
 }: PriceEditModalProps) {
   const [price, setPrice] = useState('');
+  const [currentQuantity, setCurrentQuantity] = useState(quantity);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Atualiza o preço quando o modal abre
+  // Atualiza o preço e quantidade quando o modal abre
   useEffect(() => {
     if (visible) {
       setPrice(currentPrice ? currentPrice.toString() : '');
+      setCurrentQuantity(quantity);
     }
-  }, [visible, currentPrice]);
+  }, [visible, currentPrice, quantity]);
 
   const handleConfirm = async () => {
     try {
@@ -50,9 +52,10 @@ export default function PriceEditModal({
         return;
       }
 
-      await onConfirm(numericPrice);
+      await onConfirm(numericPrice, currentQuantity);
       onClose();
       setPrice('');
+      setCurrentQuantity(1);
     } catch (error) {
       console.error('Erro ao atualizar preço:', error);
       Alert.alert('Erro', 'Não foi possível atualizar o preço');
@@ -63,6 +66,7 @@ export default function PriceEditModal({
 
   const handleCancel = () => {
     setPrice(currentPrice ? currentPrice.toString() : '');
+    setCurrentQuantity(quantity);
     onClose();
   };
 
@@ -78,9 +82,10 @@ export default function PriceEditModal({
           onPress: async () => {
             try {
               setIsSubmitting(true);
-              await onConfirm(null);
+              await onConfirm(null, currentQuantity);
               onClose();
               setPrice('');
+              setCurrentQuantity(1);
             } catch (error) {
               console.error('Erro ao remover preço:', error);
               Alert.alert('Erro', 'Não foi possível remover o preço');
@@ -97,6 +102,14 @@ export default function PriceEditModal({
     // Remove caracteres não numéricos exceto vírgula e ponto
     const cleanValue = value.replace(/[^\d.,]/g, '');
     return cleanValue;
+  };
+
+  const increaseQuantity = () => {
+    setCurrentQuantity(prev => prev + 1);
+  };
+
+  const decreaseQuantity = () => {
+    setCurrentQuantity(prev => Math.max(1, prev - 1));
   };
 
   return (
@@ -117,9 +130,30 @@ export default function PriceEditModal({
 
           <View style={styles.productInfo}>
             <Text style={styles.productName}>{productName}</Text>
-            <Text style={styles.productQuantity}>
-              {quantity} {unit}
-            </Text>
+          </View>
+
+          <View style={styles.quantityContainer}>
+            <Text style={styles.inputLabel}>Quantidade</Text>
+            <View style={styles.quantitySelector}>
+              <TouchableOpacity
+                style={[styles.quantityButton, (isSubmitting || loading || currentQuantity <= 1) && styles.disabledButton]}
+                onPress={decreaseQuantity}
+                disabled={isSubmitting || loading || currentQuantity <= 1}
+              >
+                <Ionicons name="remove" size={20} color={currentQuantity <= 1 ? '#ccc' : '#666'} />
+              </TouchableOpacity>
+              <View style={styles.quantityDisplay}>
+                <Text style={styles.quantityText}>{currentQuantity}</Text>
+                <Text style={styles.unitText}>{unit}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.quantityButton, (isSubmitting || loading) && styles.disabledButton]}
+                onPress={increaseQuantity}
+                disabled={isSubmitting || loading}
+              >
+                <Ionicons name="add" size={20} color="#666" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.inputContainer}>
@@ -157,7 +191,7 @@ export default function PriceEditModal({
             <Text style={styles.totalLabel}>Total estimado:</Text>
             <Text style={styles.totalValue}>
               {price && !isNaN(parseFloat(price.replace(',', '.'))) 
-                ? (parseFloat(price.replace(',', '.')) * quantity).toLocaleString('pt-BR', {
+                ? (parseFloat(price.replace(',', '.')) * currentQuantity).toLocaleString('pt-BR', {
                     style: 'currency',
                     currency: 'BRL'
                   })
@@ -247,6 +281,38 @@ const styles = StyleSheet.create({
   productQuantity: {
     fontSize: 14,
     color: '#666',
+  },
+  quantityContainer: {
+    marginBottom: 20,
+  },
+  quantitySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    paddingVertical: 8,
+  },
+  quantityButton: {
+    padding: 12,
+    borderRadius: 6,
+  },
+  quantityDisplay: {
+    alignItems: 'center',
+    marginHorizontal: 20,
+    minWidth: 60,
+  },
+  quantityText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  unitText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
   },
   inputContainer: {
     marginBottom: 20,

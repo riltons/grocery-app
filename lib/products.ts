@@ -5,6 +5,44 @@ import { generateBarcode } from './barcodeGenerator';
 /**
  * Serviço para gerenciar operações com produtos genéricos e específicos
  */
+export const ProductsService = {
+  /**
+   * Busca todos os produtos específicos do usuário
+   */
+  getUserProducts: async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('specific_products')
+        .select(`
+          *,
+          generic_products (
+            *,
+            categories (
+              id,
+              name,
+              icon,
+              color
+            )
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('name');
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar produtos do usuário:', error);
+      return { data: null, error };
+    }
+  },
+};
+
 export const ProductService = {
   /**
    * Busca todos os produtos genéricos do usuário (incluindo produtos padrão)
@@ -695,6 +733,44 @@ export const ProductService = {
       return { data, error: null };
     } catch (error) {
       console.error('Erro ao buscar produtos manuais:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Busca o último preço registrado de um produto específico
+   */
+  getLastProductPrice: async (specificProductId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('price_history')
+        .select(`
+          *,
+          stores (
+            id,
+            name,
+            address
+          )
+        `)
+        .eq('specific_product_id', specificProductId)
+        .eq('user_id', user.id)
+        .order('date', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+
+      return { data: data || null, error: null };
+    } catch (error) {
+      console.error('Erro ao buscar último preço do produto:', error);
       return { data: null, error };
     }
   },
