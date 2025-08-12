@@ -166,36 +166,35 @@ export default function ProductsTab() {
   );
 
   const renderGenericProductItem = ({ item }: { item: GenericProduct }) => (
-    <View style={styles.productItem}>
+    <View style={styles.genericProductCard}>
       <TouchableOpacity
-        style={styles.productMainContent}
+        style={styles.genericProductMainContent}
         onPress={() => router.push(`/product/generic/${item.id}`)}
       >
-        <View style={styles.genericProductIcon}>
+        <View style={styles.genericProductIconLarge}>
           <Ionicons 
             name={item.categories?.icon as any || "cube-outline"} 
-            size={24} 
+            size={32} 
             color={item.categories?.color || "#64748b"} 
           />
         </View>
         
-        <View style={styles.productInfo}>
-          <Text style={styles.productName}>{item.name}</Text>
-          <Text style={styles.productCategory}>
+        <View style={styles.genericProductInfo}>
+          <Text style={styles.genericProductName} numberOfLines={2}>
+            {item.name}
+          </Text>
+          <Text style={styles.genericProductCategory} numberOfLines={1}>
             {item.categories?.name || 'Sem categoria'}
           </Text>
           {item.is_default && (
-            <Text style={styles.defaultBadge}>Produto padrão</Text>
+            <View style={styles.defaultBadgeSmall}>
+              <Text style={styles.defaultBadgeSmallText}>Padrão</Text>
+            </View>
           )}
-          <Text style={styles.productDate}>
-            Criado em {new Date(item.created_at).toLocaleDateString('pt-BR')}
-          </Text>
         </View>
-
-        <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
       </TouchableOpacity>
 
-      <View style={styles.productActions}>
+      <View style={styles.genericProductActions}>
         <TouchableOpacity
           style={styles.addToListButton}
           onPress={() => handleAddToList(item, 'generic')}
@@ -343,6 +342,8 @@ export default function ProductsTab() {
         }
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={false}
+        numColumns={activeTab === 'generic' ? 2 : 1}
+        key={activeTab} // Force re-render when switching tabs
       />
 
       <ListSelectionModal
@@ -460,7 +461,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   addToListText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
     color: '#4CAF50',
   },
@@ -594,4 +595,73 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: 2,
   },
+  // Estilos para produtos genéricos em 2 colunas
+  genericProductCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginBottom: 12,
+    marginHorizontal: 6,
+    flex: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  genericProductMainContent: {
+    padding: 16,
+    alignItems: 'center',
+  },
+  genericProductIconLarge: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  genericProductInfo: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  genericProductName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    textAlign: 'center',
+    marginBottom: 4,
+    minHeight: 40, // Garantir altura consistente
+  },
+  genericProductCategory: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  defaultBadgeSmall: {
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  defaultBadgeSmallText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#059669',
+  },
+  genericProductActions: {
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+
 });
