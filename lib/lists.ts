@@ -730,4 +730,77 @@ export const ListsService = {
   isListFinished: (list: List) => {
     return list.status === 'finished';
   },
+
+  /**
+   * Adiciona um produto específico à lista
+   */
+  addSpecificProductToList: async (listId: string, productId: string, quantity: number = 1, unit: string = 'un') => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar informações do produto específico
+      const { data: product, error: productError } = await supabase
+        .from('specific_products')
+        .select('name')
+        .eq('id', productId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (productError || !product) {
+        throw new Error('Produto não encontrado');
+      }
+
+      // Adicionar item à lista
+      return await ListsService.addListItem(listId, {
+        product_name: product.name,
+        quantity,
+        unit,
+        checked: false,
+        product_id: productId,
+      });
+    } catch (error) {
+      console.error('Erro ao adicionar produto específico à lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Adiciona um produto genérico à lista
+   */
+  addGenericProductToList: async (listId: string, genericProductId: string, quantity: number = 1, unit: string = 'un') => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar informações do produto genérico
+      const { data: product, error: productError } = await supabase
+        .from('generic_products')
+        .select('name')
+        .eq('id', genericProductId)
+        .single();
+
+      if (productError || !product) {
+        throw new Error('Produto genérico não encontrado');
+      }
+
+      // Adicionar item à lista
+      return await ListsService.addListItem(listId, {
+        product_name: product.name,
+        quantity,
+        unit,
+        checked: false,
+        generic_product_id: genericProductId,
+      });
+    } catch (error) {
+      console.error('Erro ao adicionar produto genérico à lista:', error);
+      return { data: null, error };
+    }
+  },
 };

@@ -258,8 +258,8 @@ export default function NewProduct() {
           // Se há um destino específico, ir para lá
           router.replace(returnTo);
         } else {
-          // Caso padrão: voltar para a tela anterior
-          router.back();
+          // Caso padrão: ir para a página de produtos
+          router.replace('/(tabs)/products');
         }
       }
     } catch (error) {

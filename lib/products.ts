@@ -246,6 +246,46 @@ export const ProductService = {
   },
 
   /**
+   * Verifica se já existe um produto genérico com o nome especificado
+   */
+  checkGenericProductExists: async (name: string, excludeId?: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Normalizar o nome para comparação (remover espaços e converter para minúsculo)
+      const normalizedName = name.trim().toLowerCase();
+
+      let query = supabase
+        .from('generic_products')
+        .select('id, name')
+        .eq('user_id', user.id);
+
+      // Se há um ID para excluir (caso de edição), não incluir esse produto na verificação
+      if (excludeId) {
+        query = query.neq('id', excludeId);
+      }
+
+      const { data: genericProducts, error } = await query;
+
+      if (error) throw error;
+
+      // Verificar se algum produto genérico tem nome similar
+      const exists = genericProducts?.some(product => 
+        product.name.trim().toLowerCase() === normalizedName
+      );
+
+      return { exists: exists || false, error: null };
+    } catch (error) {
+      console.error('Erro ao verificar se produto genérico existe:', error);
+      return { exists: false, error };
+    }
+  },
+
+  /**
    * Busca todos os produtos específicos
    */
   getSpecificProducts: async () => {

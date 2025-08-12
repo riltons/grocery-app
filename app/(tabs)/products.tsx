@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,21 +10,31 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import SafeContainer from '../../components/SafeContainer';
 import ProductImage from '../../components/ProductImage';
+import ListSelectionModal from '../../components/ListSelectionModal';
 import { useToast } from '../../context/ToastContext';
-import { ProductsService } from '../../lib/products';
-import type { SpecificProduct } from '../../lib/supabase';
+import { ProductsService, ProductService } from '../../lib/products';
+import type { SpecificProduct, GenericProduct } from '../../lib/supabase';
+
+type TabType = 'specific' | 'generic';
 
 export default function ProductsTab() {
   const router = useRouter();
   const { showError } = useToast();
-  const [products, setProducts] = useState<SpecificProduct[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('specific');
+  const [specificProducts, setSpecificProducts] = useState<SpecificProduct[]>([]);
+  const [genericProducts, setGenericProducts] = useState<GenericProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredProducts, setFilteredProducts] = useState<SpecificProduct[]>([]);
+  const [filteredSpecificProducts, setFilteredSpecificProducts] = useState<SpecificProduct[]>([]);
+  const [filteredGenericProducts, setFilteredGenericProducts] = useState<GenericProduct[]>([]);
+  const [showListModal, setShowListModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<SpecificProduct | GenericProduct | null>(null);
+  const [selectedProductType, setSelectedProductType] = useState<'specific' | 'generic'>('specific');
 
   useEffect(() => {
     loadProducts();
@@ -32,18 +42,41 @@ export default function ProductsTab() {
 
   useEffect(() => {
     filterProducts();
-  }, [searchQuery, products]);
+  }, [searchQuery, specificProducts, genericProducts, activeTab]);
+
+  // Recarregar dados sempre que a tela ganhar foco
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 Página de produtos ganhou foco - recarregando dados...');
+      loadProducts();
+    }, [])
+  );
 
   const loadProducts = async () => {
     try {
-      const { data, error } = await ProductsService.getUserProducts();
-      if (error) {
-        showError('Erro', 'Não foi possível carregar os produtos');
+      console.log('📦 Carregando produtos...');
+      
+      // Carregar produtos específicos
+      const { data: specificData, error: specificError } = await ProductService.getSpecificProducts();
+      if (specificError) {
+        console.error('❌ Erro ao carregar produtos específicos:', specificError);
+        showError('Erro', 'Não foi possível carregar os produtos específicos');
       } else {
-        setProducts(data || []);
+        console.log('✅ Produtos específicos carregados:', specificData?.length || 0);
+        setSpecificProducts(specificData || []);
+      }
+
+      // Carregar produtos genéricos
+      const { data: genericData, error: genericError } = await ProductService.getGenericProducts();
+      if (genericError) {
+        console.error('❌ Erro ao carregar produtos genéricos:', genericError);
+        showError('Erro', 'Não foi possível carregar os produtos genéricos');
+      } else {
+        console.log('✅ Produtos genéricos carregados:', genericData?.length || 0);
+        setGenericProducts(genericData || []);
       }
     } catch (error) {
-      console.error('Erro ao carregar produtos:', error);
+      console.error('❌ Erro geral ao carregar produtos:', error);
       showError('Erro', 'Ocorreu um erro ao carregar os produtos');
     } finally {
       setLoading(false);
@@ -53,17 +86,27 @@ export default function ProductsTab() {
 
   const filterProducts = () => {
     if (!searchQuery.trim()) {
-      setFilteredProducts(products);
+      setFilteredSpecificProducts(specificProducts);
+      setFilteredGenericProducts(genericProducts);
       return;
     }
 
-    const filtered = products.filter(product =>
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (product.brand && product.brand.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (product.barcode && product.barcode.includes(searchQuery))
+    const query = searchQuery.toLowerCase();
+
+    // Filtrar produtos específicos
+    const filteredSpecific = specificProducts.filter(product =>
+      product.name.toLowerCase().includes(query) ||
+      (product.brand && product.brand.toLowerCase().includes(query)) ||
+      (product.barcode && product.barcode.includes(query))
     );
 
-    setFilteredProducts(filtered);
+    // Filtrar produtos genéricos
+    const filteredGeneric = genericProducts.filter(product =>
+      product.name.toLowerCase().includes(query)
+    );
+
+    setFilteredSpecificProducts(filteredSpecific);
+    setFilteredGenericProducts(filteredGeneric);
   };
 
   const handleRefresh = () => {
@@ -71,57 +114,138 @@ export default function ProductsTab() {
     loadProducts();
   };
 
-  const renderProductItem = ({ item }: { item: SpecificProduct }) => (
-    <TouchableOpacity
-      style={styles.productItem}
-      onPress={() => router.push(`/product/${item.id}`)}
-    >
-      <ProductImage 
-        imageUrl={item.image_url}
-        size="medium"
-        style={styles.productImage}
-      />
-      
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        {item.brand && (
-          <Text style={styles.productBrand}>{item.brand}</Text>
-        )}
-        {item.barcode && (
-          <Text style={styles.productBarcode}>Código: {item.barcode}</Text>
-        )}
-        <Text style={styles.productDate}>
-          Criado em {new Date(item.created_at).toLocaleDateString('pt-BR')}
-        </Text>
-      </View>
+  const handleAddToList = (product: SpecificProduct | GenericProduct, type: 'specific' | 'generic') => {
+    setSelectedProduct(product);
+    setSelectedProductType(type);
+    setShowListModal(true);
+  };
 
-      <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
-    </TouchableOpacity>
-  );
+  const handleListModalClose = () => {
+    setShowListModal(false);
+    setSelectedProduct(null);
+  };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Ionicons name="basket-outline" size={64} color="#cbd5e1" />
-      <Text style={styles.emptyTitle}>
-        {searchQuery ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {searchQuery 
-          ? 'Tente ajustar sua pesquisa ou adicionar novos produtos'
-          : 'Seus produtos específicos aparecerão aqui conforme você os adiciona'
-        }
-      </Text>
-      {!searchQuery && (
+  const renderSpecificProductItem = ({ item }: { item: SpecificProduct }) => (
+    <View style={styles.productItem}>
+      <TouchableOpacity
+        style={styles.productMainContent}
+        onPress={() => router.push(`/product/${item.id}`)}
+      >
+        <ProductImage 
+          imageUrl={item.image_url}
+          size="medium"
+          style={styles.productImage}
+        />
+        
+        <View style={styles.productInfo}>
+          <Text style={styles.productName}>{item.name}</Text>
+          {item.brand && (
+            <Text style={styles.productBrand}>{item.brand}</Text>
+          )}
+          {item.barcode && (
+            <Text style={styles.productBarcode}>Código: {item.barcode}</Text>
+          )}
+          <Text style={styles.productDate}>
+            Criado em {new Date(item.created_at).toLocaleDateString('pt-BR')}
+          </Text>
+        </View>
+
+        <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+      </TouchableOpacity>
+
+      <View style={styles.productActions}>
         <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => router.push('/product/new')}
+          style={styles.addToListButton}
+          onPress={() => handleAddToList(item, 'specific')}
         >
-          <Ionicons name="add" size={20} color="#fff" />
-          <Text style={styles.addButtonText}>Adicionar Produto</Text>
+          <Ionicons name="add-circle-outline" size={20} color="#4CAF50" />
+          <Text style={styles.addToListText}>Adicionar à Lista</Text>
         </TouchableOpacity>
-      )}
+      </View>
     </View>
   );
+
+  const renderGenericProductItem = ({ item }: { item: GenericProduct }) => (
+    <View style={styles.productItem}>
+      <TouchableOpacity
+        style={styles.productMainContent}
+        onPress={() => router.push(`/product/generic/${item.id}`)}
+      >
+        <View style={styles.genericProductIcon}>
+          <Ionicons 
+            name={item.categories?.icon as any || "cube-outline"} 
+            size={24} 
+            color={item.categories?.color || "#64748b"} 
+          />
+        </View>
+        
+        <View style={styles.productInfo}>
+          <Text style={styles.productName}>{item.name}</Text>
+          <Text style={styles.productCategory}>
+            {item.categories?.name || 'Sem categoria'}
+          </Text>
+          {item.is_default && (
+            <Text style={styles.defaultBadge}>Produto padrão</Text>
+          )}
+          <Text style={styles.productDate}>
+            Criado em {new Date(item.created_at).toLocaleDateString('pt-BR')}
+          </Text>
+        </View>
+
+        <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+      </TouchableOpacity>
+
+      <View style={styles.productActions}>
+        <TouchableOpacity
+          style={styles.addToListButton}
+          onPress={() => handleAddToList(item, 'generic')}
+        >
+          <Ionicons name="add-circle-outline" size={20} color="#4CAF50" />
+          <Text style={styles.addToListText}>Adicionar à Lista</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  const renderEmptyState = () => {
+    const isSpecificTab = activeTab === 'specific';
+    const productType = isSpecificTab ? 'específicos' : 'genéricos';
+    const addRoute = isSpecificTab ? '/product/scanner' : '/product/generic/new';
+    const buttonIcon = isSpecificTab ? 'barcode-outline' : 'add';
+    const buttonText = isSpecificTab ? 'Escanear Produto' : 'Adicionar Produto Genérico';
+    
+    return (
+      <View style={styles.emptyState}>
+        <Ionicons 
+          name={isSpecificTab ? "basket-outline" : "cube-outline"} 
+          size={64} 
+          color="#cbd5e1" 
+        />
+        <Text style={styles.emptyTitle}>
+          {searchQuery ? 'Nenhum produto encontrado' : `Nenhum produto ${productType} cadastrado`}
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          {searchQuery 
+            ? 'Tente ajustar sua pesquisa ou adicionar novos produtos'
+            : isSpecificTab 
+              ? 'Escaneie códigos de barras para adicionar produtos específicos com informações detalhadas'
+              : `Seus produtos ${productType} aparecerão aqui conforme você os adiciona`
+          }
+        </Text>
+        {!searchQuery && (
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => router.push(addRoute)}
+          >
+            <Ionicons name={buttonIcon} size={20} color="#fff" />
+            <Text style={styles.addButtonText}>
+              {buttonText}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   if (loading) {
     return (
@@ -134,15 +258,60 @@ export default function ProductsTab() {
     );
   }
 
+  const getCurrentData = () => {
+    return activeTab === 'specific' ? filteredSpecificProducts : filteredGenericProducts;
+  };
+
+  const getCurrentRenderItem = () => {
+    return activeTab === 'specific' ? renderSpecificProductItem : renderGenericProductItem;
+  };
+
   return (
     <SafeContainer style={styles.container} hasTabBar={true}>
       <View style={styles.header}>
         <Text style={styles.title}>Meus Produtos</Text>
         <TouchableOpacity
           style={styles.addProductButton}
-          onPress={() => router.push('/product/new')}
+          onPress={() => router.push(activeTab === 'specific' ? '/product/scanner' : '/product/generic/new')}
         >
-          <Ionicons name="add" size={20} color="#4CAF50" />
+          <Ionicons name={activeTab === 'specific' ? "barcode-outline" : "add"} size={20} color="#4CAF50" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Abas */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'specific' && styles.activeTab]}
+          onPress={() => setActiveTab('specific')}
+        >
+          <Ionicons 
+            name="basket-outline" 
+            size={20} 
+            color={activeTab === 'specific' ? '#4CAF50' : '#64748b'} 
+          />
+          <Text style={[styles.tabText, activeTab === 'specific' && styles.activeTabText]}>
+            Específicos
+          </Text>
+          <View style={styles.tabBadge}>
+            <Text style={styles.tabBadgeText}>{specificProducts.length}</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'generic' && styles.activeTab]}
+          onPress={() => setActiveTab('generic')}
+        >
+          <Ionicons 
+            name="cube-outline" 
+            size={20} 
+            color={activeTab === 'generic' ? '#4CAF50' : '#64748b'} 
+          />
+          <Text style={[styles.tabText, activeTab === 'generic' && styles.activeTabText]}>
+            Genéricos
+          </Text>
+          <View style={styles.tabBadge}>
+            <Text style={styles.tabBadgeText}>{genericProducts.length}</Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -151,7 +320,7 @@ export default function ProductsTab() {
           <Ionicons name="search-outline" size={20} color="#64748b" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar produtos..."
+            placeholder={`Buscar produtos ${activeTab === 'specific' ? 'específicos' : 'genéricos'}...`}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor="#94a3b8"
@@ -165,8 +334,8 @@ export default function ProductsTab() {
       </View>
 
       <FlatList
-        data={filteredProducts}
-        renderItem={renderProductItem}
+        data={getCurrentData()}
+        renderItem={getCurrentRenderItem()}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         refreshControl={
@@ -174,6 +343,16 @@ export default function ProductsTab() {
         }
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={false}
+      />
+
+      <ListSelectionModal
+        visible={showListModal}
+        onClose={handleListModalClose}
+        product={selectedProduct}
+        productType={selectedProductType}
+        onSuccess={() => {
+          // Opcional: recarregar dados ou mostrar feedback adicional
+        }}
       />
     </SafeContainer>
   );
@@ -247,10 +426,7 @@ const styles = StyleSheet.create({
   productItem: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
-    padding: 16,
     marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -259,6 +435,34 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+  },
+  productMainContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  productActions: {
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  addToListButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f0f8f1',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  addToListText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#4CAF50',
   },
   productImage: {
     marginRight: 16,
@@ -321,5 +525,73 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    gap: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: '#4CAF50',
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#64748b',
+  },
+  activeTabText: {
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  tabBadge: {
+    backgroundColor: '#e2e8f0',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  tabBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  genericProductIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  productCategory: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 2,
+  },
+  defaultBadge: {
+    fontSize: 12,
+    color: '#059669',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 2,
   },
 });
