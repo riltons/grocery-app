@@ -12,6 +12,7 @@ import PriceEditModal from '../../components/PriceEditModal';
 import ProductSubstitutionModal from '../../components/ProductSubstitutionModal';
 import StoreSelectionModal from '../../components/StoreSelectionModal';
 import ListFinishModal from '../../components/ListFinishModal';
+import ShareListModal from '../../components/ShareListModal';
 import QuantitySelector from '../../components/QuantitySelector';
 import SafeContainer from '../../components/SafeContainer';
 import AnimatedListItem from '../../components/AnimatedListItem';
@@ -66,6 +67,7 @@ export default function ListDetail() {
   const [substitutionModalVisible, setSubstitutionModalVisible] = useState(false);
   const [storeSelectionModalVisible, setStoreSelectionModalVisible] = useState(false);
   const [finishModalVisible, setFinishModalVisible] = useState(false);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ListItem | null>(null);
   const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
   const [selectedStore, setSelectedStore] = useState<Store | null>(null);
@@ -1261,13 +1263,22 @@ export default function ListDetail() {
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity 
-          style={styles.finishButton}
-          onPress={() => setFinishModalVisible(true)}
-          disabled={addingItem}
-        >
-          <Ionicons name="checkmark-done" size={20} color="#4CAF50" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={styles.shareButton}
+            onPress={() => setShareModalVisible(true)}
+            disabled={addingItem}
+          >
+            <Ionicons name="share-outline" size={20} color="#4CAF50" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.finishButton}
+            onPress={() => setFinishModalVisible(true)}
+            disabled={addingItem}
+          >
+            <Ionicons name="checkmark-done" size={20} color="#4CAF50" />
+          </TouchableOpacity>
+        </View>
       </View>
 
 
@@ -1355,6 +1366,15 @@ export default function ListDetail() {
         pendingItemsCount={pendingItems.length}
         completedItemsCount={completedItems.length}
         loading={addingItem}
+      />
+
+      <ShareListModal
+        visible={shareModalVisible}
+        onClose={() => setShareModalVisible(false)}
+        list={list}
+        onSuccess={() => {
+          // Opcional: recarregar dados da lista se necessário
+        }}
       />
 
 
@@ -1523,6 +1543,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6c757d',
     textAlign: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shareButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0f8f1',
   },
   finishButton: {
     padding: 8,

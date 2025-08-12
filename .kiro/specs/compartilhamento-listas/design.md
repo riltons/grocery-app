@@ -2,7 +2,7 @@
 
 ## Visão Geral
 
-A funcionalidade de compartilhamento de listas permitirá colaboração em tempo real entre múltiplos usuários em uma mesma lista de compras. O sistema será construído sobre a infraestrutura existente do Supabase, utilizando Row Level Security (RLS) para controle de acesso e Realtime para sincronização automática entre participantes.
+A funcionalidade de compartilhamento de listas permitirá colaboração em tempo real entre múltiplos usuários com controle granular sobre o que é compartilhado. O sistema oferece três modalidades: **lista completa**, **produtos específicos** ou **categorias específicas**, permitindo colaboração focada e organizada. Será construído sobre a infraestrutura existente do Supabase, utilizando Row Level Security (RLS) para controle de acesso e Realtime para sincronização automática entre participantes.
 
 ### Conceitos Principais
 
@@ -10,6 +10,9 @@ A funcionalidade de compartilhamento de listas permitirá colaboração em tempo
 - **Participante**: Usuário convidado com permissões específicas
 - **Convite**: Solicitação de compartilhamento enviada a um usuário
 - **Permissões**: Níveis de acesso (visualizar, editar, administrar)
+- **Compartilhamento Granular**: Controle específico sobre o que é compartilhado
+- **Escopo de Compartilhamento**: Define se é lista completa, produtos específicos ou categorias específicas
+- **Visualização Filtrada**: Interface que mostra apenas itens dentro do escopo compartilhado
 
 ## Arquitetura
 
@@ -60,6 +63,74 @@ sequenceDiagram
     U1->>U1: Atualiza interface
 ```
 
+## Compartilhamento Granular
+
+### Tipos de Compartilhamento
+
+#### 1. Lista Completa
+- **Descrição**: Compartilha todos os itens da lista
+- **Comportamento**: Participantes veem e podem interagir com todos os itens
+- **Sincronização**: Novos itens aparecem automaticamente para todos
+- **Uso**: Ideal para compras familiares ou colaboração total
+
+#### 2. Produtos Específicos
+- **Descrição**: Compartilha apenas itens selecionados individualmente
+- **Comportamento**: Participantes veem apenas os produtos escolhidos
+- **Sincronização**: Novos itens não aparecem automaticamente
+- **Uso**: Ideal para delegar produtos específicos ou compras pontuais
+
+#### 3. Categorias Específicas
+- **Descrição**: Compartilha todos os itens de categorias selecionadas
+- **Comportamento**: Participantes veem itens das categorias escolhidas
+- **Sincronização**: Novos itens das categorias aparecem automaticamente
+- **Uso**: Ideal para divisão de responsabilidades por tipo de produto
+
+### Fluxo de Seleção Granular
+
+```mermaid
+flowchart TD
+    A[Usuário clica Compartilhar] --> B[Modal de Compartilhamento]
+    B --> C{Escolher Tipo}
+    C -->|Lista Completa| D[Selecionar Usuários]
+    C -->|Produtos Específicos| E[Selecionar Produtos]
+    C -->|Categorias Específicas| F[Selecionar Categorias]
+    E --> G[Selecionar Usuários]
+    F --> H[Selecionar Usuários]
+    D --> I[Definir Permissões]
+    G --> I
+    H --> I
+    I --> J[Enviar Convites]
+```
+
+### Interface de Seleção Granular
+
+```typescript
+interface GranularSharingModal {
+  shareType: ShareType;
+  selectedItems?: string[]; // IDs dos produtos selecionados
+  selectedCategories?: string[]; // IDs das categorias selecionadas
+  onTypeChange: (type: ShareType) => void;
+  onItemsChange: (items: string[]) => void;
+  onCategoriesChange: (categories: string[]) => void;
+}
+
+enum ShareType {
+  FULL_LIST = 'full_list',
+  SPECIFIC_PRODUCTS = 'specific_products',
+  SPECIFIC_CATEGORIES = 'specific_categories'
+}
+
+interface GranularShare {
+  id: string;
+  listId: string;
+  shareType: ShareType;
+  sharedItems?: string[]; // Para produtos específicos
+  sharedCategories?: string[]; // Para categorias específicas
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
 ## Componentes e Interfaces
 
 ### 1. ShareListModal Component
@@ -70,6 +141,8 @@ interface ShareListModalProps {
   isVisible: boolean;
   onClose: () => void;
   currentShares: ListShare[];
+  listItems: ListItem[]; // Para seleção de produtos específicos
+  categories: Category[]; // Para seleção de categorias
 }
 
 interface ListShare {
@@ -79,6 +152,9 @@ interface ListShare {
   userEmail: string;
   userName: string;
   permission: SharePermission;
+  shareType: ShareType;
+  sharedItems?: string[]; // IDs dos produtos compartilhados
+  sharedCategories?: string[]; // IDs das categorias compartilhadas
   createdAt: Date;
   acceptedAt?: Date;
 }
@@ -88,12 +164,33 @@ enum SharePermission {
   EDIT = 'edit',
   ADMIN = 'admin'
 }
+
+enum ShareType {
+  FULL_LIST = 'full_list',
+  SPECIFIC_PRODUCTS = 'specific_products',
+  SPECIFIC_CATEGORIES = 'specific_categories'
+}
+
+interface ListItem {
+  id: string;
+  name: string;
+  categoryId?: string;
+  categoryName?: string;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+}
 ```
 
 ### 2. SharingService
 
 ```typescript
 interface SharingService {
+  // Métodos básicos de compartilhamento
   inviteUser(listId: string, userEmail: string, permission: SharePermission): Promise<Invitation>;
   acceptInvitation(invitationId: string): Promise<void>;
   rejectInvitation(invitationId: string): Promise<void>;
@@ -101,7 +198,34 @@ interface SharingService {
   removeParticipant(shareId: string): Promise<void>;
   leaveList(listId: string): Promise<void>;
   transferOwnership(listId: string, newOwnerId: string): Promise<void>;
-  generateShareLink(listId: string, permission: SharePermission, expiresIn?: number): Promise<ShareLink>;
+  
+  // Métodos para compartilhamento granular
+  inviteUserGranular(
+    listId: string, 
+    userEmail: string, 
+    permission: SharePermission,
+    shareType: ShareType,
+    sharedItems?: string[],
+    sharedCategories?: string[]
+  ): Promise<Invitation>;
+  
+  updateShareScope(
+    shareId: string,
+    shareType: ShareType,
+    sharedItems?: string[],
+    sharedCategories?: string[]
+  ): Promise<void>;
+  
+  getFilteredListItems(listId: string, userId: string): Promise<ListItem[]>;
+  
+  generateGranularShareLink(
+    listId: string, 
+    permission: SharePermission,
+    shareType: ShareType,
+    sharedItems?: string[],
+    sharedCategories?: string[],
+    expiresIn?: number
+  ): Promise<ShareLink>;
 }
 
 interface Invitation {
@@ -155,7 +279,7 @@ interface NotificationPreferences {
 
 ## Modelos de Dados
 
-### Tabela list_shares
+### Tabela list_shares (Atualizada para Compartilhamento Granular)
 
 ```sql
 CREATE TABLE list_shares (
@@ -163,8 +287,12 @@ CREATE TABLE list_shares (
   list_id UUID NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   permission VARCHAR(10) NOT NULL CHECK (permission IN ('view', 'edit', 'admin')),
+  share_type VARCHAR(20) NOT NULL DEFAULT 'full_list' CHECK (share_type IN ('full_list', 'specific_products', 'specific_categories')),
+  shared_items JSONB, -- Array de IDs dos produtos compartilhados (para specific_products)
+  shared_categories JSONB, -- Array de IDs das categorias compartilhadas (para specific_categories)
   created_at TIMESTAMP DEFAULT NOW(),
   created_by UUID NOT NULL REFERENCES auth.users(id),
+  updated_at TIMESTAMP DEFAULT NOW(),
   
   UNIQUE(list_id, user_id)
 );
@@ -304,6 +432,75 @@ CREATE TRIGGER trigger_update_list_shared_status
   EXECUTE FUNCTION update_list_shared_status();
 ```
 
+### Tabela share_scope_history
+
+```sql
+-- Tabela para rastrear mudanças no escopo de compartilhamento
+CREATE TABLE share_scope_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  share_id UUID NOT NULL REFERENCES list_shares(id) ON DELETE CASCADE,
+  previous_share_type VARCHAR(20),
+  new_share_type VARCHAR(20) NOT NULL,
+  previous_shared_items JSONB,
+  new_shared_items JSONB,
+  previous_shared_categories JSONB,
+  new_shared_categories JSONB,
+  changed_by UUID NOT NULL REFERENCES auth.users(id),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Índices
+CREATE INDEX idx_share_scope_history_share_id ON share_scope_history(share_id);
+CREATE INDEX idx_share_scope_history_created_at ON share_scope_history(created_at);
+
+-- RLS Policies
+ALTER TABLE share_scope_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view scope history of their shares" ON share_scope_history
+  FOR SELECT USING (
+    share_id IN (
+      SELECT id FROM list_shares 
+      WHERE user_id = auth.uid() OR 
+            list_id IN (SELECT id FROM lists WHERE user_id = auth.uid())
+    )
+  );
+```
+
+### View para Itens Filtrados
+
+```sql
+-- View que retorna apenas itens visíveis para cada compartilhamento
+CREATE VIEW shared_list_items AS
+SELECT 
+  li.*,
+  ls.user_id as shared_with_user_id,
+  ls.share_type,
+  ls.shared_items,
+  ls.shared_categories,
+  CASE 
+    WHEN ls.share_type = 'full_list' THEN true
+    WHEN ls.share_type = 'specific_products' AND li.id = ANY(
+      SELECT jsonb_array_elements_text(ls.shared_items)::uuid
+    ) THEN true
+    WHEN ls.share_type = 'specific_categories' AND li.category_id = ANY(
+      SELECT jsonb_array_elements_text(ls.shared_categories)::uuid
+    ) THEN true
+    ELSE false
+  END as is_visible
+FROM list_items li
+JOIN list_shares ls ON li.list_id = ls.list_id
+WHERE ls.user_id = auth.uid()
+  AND (
+    ls.share_type = 'full_list' OR
+    (ls.share_type = 'specific_products' AND li.id = ANY(
+      SELECT jsonb_array_elements_text(ls.shared_items)::uuid
+    )) OR
+    (ls.share_type = 'specific_categories' AND li.category_id = ANY(
+      SELECT jsonb_array_elements_text(ls.shared_categories)::uuid
+    ))
+  );
+```
+
 ## Tratamento de Erros
 
 ### Cenários de Erro e Respostas
@@ -394,6 +591,98 @@ class ConflictResolver {
 2. **Latência**: Sincronização < 500ms em condições normais
 3. **Throughput**: Suportar múltiplas alterações simultâneas
 
+## Interface de Usuário para Compartilhamento Granular
+
+### Fluxo de Compartilhamento
+
+#### Passo 1: Seleção do Tipo
+```typescript
+interface ShareTypeSelector {
+  options: [
+    {
+      type: 'full_list',
+      title: 'Lista Completa',
+      description: 'Compartilhar todos os itens da lista',
+      icon: 'list-outline'
+    },
+    {
+      type: 'specific_products',
+      title: 'Produtos Específicos',
+      description: 'Escolher produtos individuais para compartilhar',
+      icon: 'checkmark-circle-outline'
+    },
+    {
+      type: 'specific_categories',
+      title: 'Categorias Específicas',
+      description: 'Compartilhar por tipo de produto',
+      icon: 'folder-outline'
+    }
+  ];
+}
+```
+
+#### Passo 2: Seleção de Itens (se aplicável)
+```typescript
+interface ProductSelector {
+  items: ListItem[];
+  selectedItems: string[];
+  onSelectionChange: (items: string[]) => void;
+  groupByCategory: boolean;
+}
+
+interface CategorySelector {
+  categories: CategoryWithCount[];
+  selectedCategories: string[];
+  onSelectionChange: (categories: string[]) => void;
+}
+
+interface CategoryWithCount {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  itemCount: number;
+  items: ListItem[];
+}
+```
+
+#### Passo 3: Configuração de Usuários e Permissões
+```typescript
+interface UserInviteConfig {
+  email: string;
+  permission: SharePermission;
+  shareType: ShareType;
+  sharedItems?: string[];
+  sharedCategories?: string[];
+}
+```
+
+### Indicadores Visuais
+
+#### Para Proprietários
+- **Badge de Compartilhamento**: Indica tipo de compartilhamento ativo
+- **Contador de Participantes**: Mostra quantos usuários têm acesso
+- **Indicador de Escopo**: Mostra quantos itens/categorias compartilhados
+
+#### Para Participantes
+- **Badge de Acesso Limitado**: Indica que não vê a lista completa
+- **Contador de Itens Ocultos**: "Mostrando 5 de 12 itens"
+- **Indicador de Categoria**: Destaca categorias acessíveis
+
+### Estados da Interface
+
+```typescript
+interface ShareState {
+  isOwner: boolean;
+  shareType: ShareType;
+  hasLimitedAccess: boolean;
+  visibleItemsCount: number;
+  totalItemsCount: number;
+  accessibleCategories: string[];
+  allCategories: string[];
+}
+```
+
 ## Considerações de Segurança
 
 ### Controle de Acesso
@@ -402,6 +691,9 @@ class ConflictResolver {
 2. **Tokens seguros**: Links de compartilhamento com tokens únicos
 3. **Expiração**: Convites e links com tempo de vida limitado
 4. **Auditoria**: Log de todas as ações de compartilhamento
+5. **Filtragem granular**: RLS policies que respeitam escopo de compartilhamento
+6. **Validação de escopo**: Verificar se usuário pode acessar item específico antes de cada operação
+7. **Prevenção de vazamento**: Garantir que mudanças de escopo não exponham dados não autorizados
 
 ### Privacidade
 

@@ -2,7 +2,7 @@
 
 ## Introdução
 
-Esta funcionalidade permitirá aos usuários compartilhar suas listas de compras com outros usuários do aplicativo, facilitando compras colaborativas entre familiares, amigos ou colegas de casa. O sistema deve permitir diferentes níveis de permissão, notificações em tempo real e sincronização automática entre todos os participantes.
+Esta funcionalidade permitirá aos usuários compartilhar suas listas de compras com outros usuários do aplicativo de forma granular e flexível, facilitando compras colaborativas entre familiares, amigos ou colegas de casa. O sistema oferece três modalidades de compartilhamento: **lista completa**, **produtos específicos** ou **categorias específicas**, permitindo controle preciso sobre o que é compartilhado. Além disso, o sistema deve permitir diferentes níveis de permissão, notificações em tempo real e sincronização automática entre todos os participantes.
 
 ## Requisitos
 
@@ -96,6 +96,61 @@ Esta funcionalidade permitirá aos usuários compartilhar suas listas de compras
 
 ### Requisito 9
 
+**User Story:** Como usuário, eu quero poder escolher o que compartilhar da minha lista (lista completa, produtos específicos ou categorias específicas), para que eu tenha controle granular sobre o que outras pessoas podem ver e editar.
+
+#### Critérios de Aceitação
+
+1. QUANDO o usuário seleciona compartilhar uma lista ENTÃO o sistema DEVE oferecer opções: "Lista Completa", "Produtos Específicos" ou "Categorias Específicas"
+2. QUANDO o usuário escolhe "Lista Completa" ENTÃO todos os itens da lista DEVEM ser compartilhados com as permissões definidas
+3. QUANDO o usuário escolhe "Produtos Específicos" ENTÃO ele DEVE poder selecionar itens individuais para compartilhar
+4. QUANDO o usuário escolhe "Categorias Específicas" ENTÃO ele DEVE poder selecionar categorias inteiras para compartilhar
+
+### Requisito 10
+
+**User Story:** Como usuário, eu quero compartilhar apenas produtos específicos da minha lista, para que eu possa colaborar em itens particulares sem expor toda a lista.
+
+#### Critérios de Aceitação
+
+1. QUANDO o usuário seleciona "Produtos Específicos" ENTÃO o sistema DEVE exibir todos os itens da lista para seleção
+2. QUANDO o usuário seleciona produtos específicos ENTÃO apenas esses itens DEVEM ser visíveis para os convidados
+3. QUANDO novos itens são adicionados à lista original ENTÃO eles NÃO DEVEM aparecer automaticamente na visualização compartilhada
+4. QUANDO o proprietário adiciona novos produtos ao compartilhamento ENTÃO os convidados DEVEM ser notificados sobre os novos itens
+
+### Requisito 11
+
+**User Story:** Como usuário, eu quero compartilhar categorias específicas da minha lista, para que eu possa dividir responsabilidades por tipo de produto (ex: uma pessoa cuida de laticínios, outra de limpeza).
+
+#### Critérios de Aceitação
+
+1. QUANDO o usuário seleciona "Categorias Específicas" ENTÃO o sistema DEVE exibir todas as categorias presentes na lista
+2. QUANDO o usuário seleciona categorias específicas ENTÃO apenas itens dessas categorias DEVEM ser compartilhados
+3. QUANDO novos itens são adicionados às categorias compartilhadas ENTÃO eles DEVEM aparecer automaticamente para os convidados
+4. QUANDO itens mudam de categoria ENTÃO a visibilidade DEVE ser atualizada conforme as categorias compartilhadas
+
+### Requisito 12
+
+**User Story:** Como participante de um compartilhamento granular, eu quero entender claramente o que posso ver e editar, para que eu saiba o escopo da minha colaboração.
+
+#### Critérios de Aceitação
+
+1. QUANDO acesso uma lista compartilhada granularmente ENTÃO o sistema DEVE indicar claramente o tipo de compartilhamento
+2. QUANDO visualizo itens compartilhados ENTÃO o sistema DEVE mostrar se há outros itens na lista original que não posso ver
+3. QUANDO tento adicionar itens fora do escopo compartilhado ENTÃO o sistema DEVE explicar as limitações
+4. QUANDO o escopo do compartilhamento muda ENTÃO eu DEVO ser notificado sobre as alterações
+
+### Requisito 13
+
+**User Story:** Como proprietário de uma lista, eu quero poder modificar o escopo do compartilhamento após criá-lo, para que eu possa ajustar o que é compartilhado conforme necessário.
+
+#### Critérios de Aceitação
+
+1. QUANDO acesso configurações de um compartilhamento existente ENTÃO eu DEVO poder alterar o tipo de compartilhamento
+2. QUANDO mudo de "Lista Completa" para "Produtos Específicos" ENTÃO eu DEVO poder selecionar quais produtos manter compartilhados
+3. QUANDO mudo de "Produtos Específicos" para "Categorias Específicas" ENTÃO o sistema DEVE mapear produtos para suas categorias
+4. QUANDO modifico o escopo ENTÃO todos os participantes DEVEM ser notificados sobre as mudanças
+
+### Requisito 14
+
 **User Story:** Como usuário, eu quero poder compartilhar listas através de links, para que eu possa convidar pessoas que ainda não usam o aplicativo.
 
 #### Critérios de Aceitação
@@ -104,3 +159,14 @@ Esta funcionalidade permitirá aos usuários compartilhar suas listas de compras
 2. QUANDO o link é acessado por usuário não cadastrado ENTÃO ele DEVE ser direcionado para criar conta
 3. QUANDO o link é acessado por usuário cadastrado ENTÃO ele DEVE poder aceitar o convite diretamente
 4. QUANDO o link expira ou é revogado ENTÃO novos acessos DEVEM ser bloqueados
+
+### Requisito 15
+
+**User Story:** Como usuário, eu quero que os links de compartilhamento respeitem o escopo granular definido, para que pessoas convidadas via link vejam apenas o que foi intencionalmente compartilhado.
+
+#### Critérios de Aceitação
+
+1. QUANDO gero um link para compartilhamento granular ENTÃO o link DEVE carregar informações sobre o escopo
+2. QUANDO alguém acessa o link ENTÃO deve ver apenas os produtos ou categorias compartilhadas
+3. QUANDO o escopo do compartilhamento original muda ENTÃO os acessos via link DEVEM refletir as mudanças
+4. QUANDO revogo um link granular ENTÃO apenas esse link específico DEVE ser invalidado, mantendo outros compartilhamentos

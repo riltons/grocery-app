@@ -62,7 +62,10 @@
     - _Requisitos: 3.1, 3.2, 3.3, 3.4, 6.1, 6.2, 6.3_
 
 - [ ] 3. Criar componentes de interface para compartilhamento
-  - [ ] 3.1 Desenvolver ShareListModal
+  - [x] 3.1 Desenvolver ShareListModal
+
+
+
     - Criar modal principal de compartilhamento
     - Implementar layout com abas para diferentes ações
     - Adicionar lista de participantes atuais
