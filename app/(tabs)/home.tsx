@@ -30,7 +30,7 @@ export default function HomeTab() {
   const router = useRouter();
   const [pendingLists, setPendingLists] = useState<List[]>([]);
   const [finishedLists, setFinishedLists] = useState<List[]>([]);
-  const [sharedLists, setSharedLists] = useState<SharedList[]>([]);
+  const [sharedLists, setSharedLists] = useState<List[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -71,7 +71,12 @@ export default function HomeTab() {
   const loadSharedLists = async (): Promise<List[]> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user) {
+        console.log('🔒 Usuário não autenticado para carregar listas compartilhadas');
+        return [];
+      }
+
+      console.log('🔍 Carregando listas compartilhadas para usuário:', user.id);
 
       const { data: sharedLists, error } = await supabase
         .from('list_shares')
@@ -79,7 +84,7 @@ export default function HomeTab() {
           list_id,
           permission,
           created_at,
-          lists!inner(
+          lists(
             id,
             name,
             created_at,
@@ -92,8 +97,12 @@ export default function HomeTab() {
         .eq('user_id', user.id);
 
       if (error) {
+        console.error('❌ Erro ao consultar list_shares:', error);
         throw error;
       }
+
+      console.log('📊 Listas compartilhadas encontradas:', sharedLists?.length || 0);
+      console.log('📋 Dados das listas compartilhadas:', sharedLists);
 
       // Converter para o formato esperado
       const formattedLists: List[] = (sharedLists || []).map(share => ({
@@ -103,9 +112,10 @@ export default function HomeTab() {
         is_shared: true
       } as any));
 
+      console.log('✅ Listas compartilhadas formatadas:', formattedLists);
       return formattedLists;
     } catch (error) {
-      console.error('Erro ao carregar listas compartilhadas:', error);
+      console.error('❌ Erro ao carregar listas compartilhadas:', error);
       return [];
     }
   };

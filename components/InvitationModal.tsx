@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../lib/supabase';
-import type { Invitation, SharePermission } from '../lib/supabase';
+import type { SharePermission } from '../lib/supabase';
 
 interface InvitationModalProps {
   visible: boolean;
@@ -39,7 +39,7 @@ export default function InvitationModal({
 }: InvitationModalProps) {
   const { showSuccess, showError } = useToast();
   const [loading, setLoading] = useState(false);
-  const [invitations, setInvitations] = useState<ShareInvitation[]>([]);
+  const [invitations, setInvitations] = useState<MockInvitation[]>([]);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,21 +52,28 @@ export default function InvitationModal({
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      console.log('🔍 DEBUG - Usuário atual:', user?.email, user?.id);
+      
       if (!user?.email) {
+        console.log('❌ DEBUG - Usuário sem email');
         setInvitations([]);
         return;
       }
+
+      console.log('📧 DEBUG - Buscando convites para user_id:', user.id);
 
       const { data: invitations, error } = await supabase
         .from('invitations')
         .select(`
           *,
-          lists!inner(name)
+          lists(name)
         `)
-        .eq('invitee_email', user.email)
+        .eq('invitee_user_id', user.id)
         .eq('status', 'pending')
         .gt('expires_at', new Date().toISOString())
         .order('created_at', { ascending: false });
+
+      console.log('📋 DEBUG - Resultado da consulta:', { invitations, error });
 
       if (error) {
         throw error;
@@ -86,6 +93,7 @@ export default function InvitationModal({
         };
       });
 
+      console.log('✅ DEBUG - Convites formatados:', formattedInvitations.length);
       setInvitations(formattedInvitations);
     } catch (error) {
       console.error('Erro ao carregar convites:', error);
@@ -104,6 +112,12 @@ export default function InvitationModal({
         return;
       }
 
+      console.log('🎯 Aceitando convite:', {
+        invitationId: invitation.id,
+        userId: user.id,
+        userEmail: user.email
+      });
+
       // Buscar o convite completo
       const { data: fullInvitation, error: inviteError } = await supabase
         .from('invitations')
@@ -112,8 +126,11 @@ export default function InvitationModal({
         .single();
 
       if (inviteError || !fullInvitation) {
+        console.error('❌ Erro ao buscar convite:', inviteError);
         throw new Error('Convite não encontrado');
       }
+
+      console.log('📋 Convite encontrado:', fullInvitation);
 
       // Criar o compartilhamento
       const { error: shareError } = await supabase
@@ -126,8 +143,11 @@ export default function InvitationModal({
         });
 
       if (shareError) {
+        console.error('❌ Erro ao criar compartilhamento:', shareError);
         throw shareError;
       }
+
+      console.log('✅ Compartilhamento criado com sucesso');
 
       // Atualizar o status do convite
       const { error: updateError } = await supabase
@@ -140,8 +160,11 @@ export default function InvitationModal({
         .eq('id', invitation.id);
 
       if (updateError) {
+        console.error('❌ Erro ao atualizar convite:', updateError);
         throw updateError;
       }
+
+      console.log('✅ Convite atualizado com sucesso');
 
       showSuccess(
         'Convite Aceito!', 
@@ -152,7 +175,7 @@ export default function InvitationModal({
       setInvitations(prev => prev.filter(inv => inv.id !== invitation.id));
       onSuccess?.();
     } catch (error) {
-      console.error('Erro ao aceitar convite:', error);
+      console.error('❌ Erro ao aceitar convite:', error);
       showError('Erro', error instanceof Error ? error.message : 'Não foi possível aceitar o convite');
     } finally {
       setProcessingId(null);

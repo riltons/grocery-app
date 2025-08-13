@@ -132,14 +132,30 @@ export const ListsService = {
         throw new Error('Usuário não autenticado');
       }
 
+      // Buscar lista (própria ou compartilhada)
       const { data, error } = await supabase
         .from('lists')
         .select('*')
         .eq('id', id)
-        .eq('user_id', user.id)
         .single();
 
       if (error) throw error;
+
+      // Verificar se o usuário tem acesso à lista (é proprietário ou tem compartilhamento)
+      if (data.user_id !== user.id) {
+        // Verificar se a lista foi compartilhada com o usuário
+        const { data: shareData, error: shareError } = await supabase
+          .from('list_shares')
+          .select('id')
+          .eq('list_id', id)
+          .eq('user_id', user.id)
+          .single();
+
+        if (shareError || !shareData) {
+          throw new Error('Você não tem acesso a esta lista');
+        }
+      }
+
       return { data, error: null };
     } catch (error) {
       console.error('Erro ao buscar lista:', error);
@@ -159,7 +175,14 @@ export const ListsService = {
         throw new Error('Usuário não autenticado');
       }
 
+      // Primeiro verificar se o usuário tem acesso à lista
+      const { data: listAccess } = await ListsService.getListById(listId);
+      if (!listAccess) {
+        throw new Error('Você não tem acesso a esta lista');
+      }
+
       // Busca itens com produtos associados e produtos genéricos
+      // Remove o filtro por user_id para permitir ver itens de listas compartilhadas
       const { data: itemsWithProducts, error: error1 } = await supabase
         .from('list_items')
         .select(`
@@ -190,7 +213,6 @@ export const ListsService = {
           )
         `)
         .eq('list_id', listId)
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error1) throw error1;
