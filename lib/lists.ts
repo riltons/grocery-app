@@ -460,6 +460,12 @@ export const ListsService = {
         throw new Error('Usuário não autenticado');
       }
 
+      // Primeiro verificar se o usuário tem acesso à lista
+      const { data: listAccess } = await ListsService.getListById(listId);
+      if (!listAccess) {
+        throw new Error('Você não tem acesso a esta lista');
+      }
+
       // Valida o preço se fornecido
       if (updates.price !== undefined && !ListsService.validatePrice(updates.price)) {
         throw new Error('Preço inválido. Deve ser um número entre 0 e 999999.99');
@@ -475,12 +481,12 @@ export const ListsService = {
       if (updates.checked !== undefined) updateData.checked = updates.checked;
       if (updates.price !== undefined) updateData.price = updates.price;
 
+      // Remove o filtro por user_id para permitir atualizar itens de listas compartilhadas
       const { data, error } = await supabase
         .from('list_items')
         .update(updateData)
         .eq('id', itemId)
         .eq('list_id', listId)
-        .eq('user_id', user.id)
         .select()
         .single();
 
@@ -504,12 +510,18 @@ export const ListsService = {
         throw new Error('Usuário não autenticado');
       }
 
+      // Primeiro verificar se o usuário tem acesso à lista
+      const { data: listAccess } = await ListsService.getListById(listId);
+      if (!listAccess) {
+        throw new Error('Você não tem acesso a esta lista');
+      }
+
+      // Remove o filtro por user_id para permitir remover itens de listas compartilhadas
       const { error } = await supabase
         .from('list_items')
         .delete()
         .eq('id', itemId)
-        .eq('list_id', listId)
-        .eq('user_id', user.id);
+        .eq('list_id', listId);
 
       if (error) throw error;
       return { error: null };
@@ -651,6 +663,17 @@ export const ListsService = {
       
       if (!user) {
         throw new Error('Usuário não autenticado');
+      }
+
+      // Primeiro verificar se o usuário tem acesso à lista
+      const { data: listAccess } = await ListsService.getListById(listId);
+      if (!listAccess) {
+        throw new Error('Você não tem acesso a esta lista');
+      }
+
+      // Verificar se o usuário é o dono da lista (apenas o dono pode finalizar)
+      if (listAccess.user_id !== user.id) {
+        throw new Error('Apenas o dono da lista pode finalizá-la');
       }
 
       const { data, error } = await supabase
