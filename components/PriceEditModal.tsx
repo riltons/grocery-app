@@ -25,6 +25,7 @@ export default function PriceEditModal({
 }: PriceEditModalProps) {
   const [price, setPrice] = useState('');
   const [currentQuantity, setCurrentQuantity] = useState(quantity);
+  const [quantityText, setQuantityText] = useState(quantity.toString());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Atualiza o preço e quantidade quando o modal abre
@@ -32,6 +33,7 @@ export default function PriceEditModal({
     if (visible) {
       setPrice(currentPrice ? currentPrice.toString() : '');
       setCurrentQuantity(quantity);
+      setQuantityText(quantity.toString());
     }
   }, [visible, currentPrice, quantity]);
 
@@ -40,8 +42,9 @@ export default function PriceEditModal({
       setIsSubmitting(true);
       
       const numericPrice = price.trim() === '' ? null : parseFloat(price.replace(',', '.'));
+      const numericQuantity = parseFloat(quantityText.replace(',', '.'));
       
-      // Validação
+      // Validação do preço
       if (numericPrice !== null && (isNaN(numericPrice) || numericPrice < 0)) {
         Alert.alert('Erro', 'Por favor, insira um preço válido');
         return;
@@ -52,10 +55,22 @@ export default function PriceEditModal({
         return;
       }
 
-      await onConfirm(numericPrice, currentQuantity);
+      // Validação da quantidade
+      if (isNaN(numericQuantity) || numericQuantity <= 0) {
+        Alert.alert('Erro', 'Por favor, insira uma quantidade válida');
+        return;
+      }
+
+      if (numericQuantity > 9999.99) {
+        Alert.alert('Erro', 'A quantidade não pode ser maior que 9999,99');
+        return;
+      }
+
+      await onConfirm(numericPrice, numericQuantity);
       onClose();
       setPrice('');
       setCurrentQuantity(1);
+      setQuantityText('1');
     } catch (error) {
       console.error('Erro ao atualizar preço:', error);
       Alert.alert('Erro', 'Não foi possível atualizar o preço');
@@ -67,6 +82,7 @@ export default function PriceEditModal({
   const handleCancel = () => {
     setPrice(currentPrice ? currentPrice.toString() : '');
     setCurrentQuantity(quantity);
+    setQuantityText(quantity.toString());
     onClose();
   };
 
@@ -82,10 +98,12 @@ export default function PriceEditModal({
           onPress: async () => {
             try {
               setIsSubmitting(true);
-              await onConfirm(null, currentQuantity);
+              const numericQuantity = parseFloat(quantityText.replace(',', '.'));
+              await onConfirm(null, numericQuantity);
               onClose();
               setPrice('');
               setCurrentQuantity(1);
+              setQuantityText('1');
             } catch (error) {
               console.error('Erro ao remover preço:', error);
               Alert.alert('Erro', 'Não foi possível remover o preço');
@@ -105,11 +123,29 @@ export default function PriceEditModal({
   };
 
   const increaseQuantity = () => {
-    setCurrentQuantity(prev => prev + 1);
+    const current = parseFloat(quantityText.replace(',', '.')) || 0;
+    const newQuantity = current + 1;
+    setCurrentQuantity(newQuantity);
+    setQuantityText(newQuantity.toString());
   };
 
   const decreaseQuantity = () => {
-    setCurrentQuantity(prev => Math.max(1, prev - 1));
+    const current = parseFloat(quantityText.replace(',', '.')) || 0;
+    const newQuantity = Math.max(0.1, current - 1);
+    setCurrentQuantity(newQuantity);
+    setQuantityText(newQuantity.toString());
+  };
+
+  const handleQuantityTextChange = (text: string) => {
+    // Remove caracteres não numéricos exceto vírgula e ponto
+    const cleanText = text.replace(/[^\d.,]/g, '');
+    setQuantityText(cleanText);
+    
+    // Atualiza currentQuantity para cálculos em tempo real
+    const numericValue = parseFloat(cleanText.replace(',', '.'));
+    if (!isNaN(numericValue) && numericValue > 0) {
+      setCurrentQuantity(numericValue);
+    }
   };
 
   return (
@@ -134,16 +170,23 @@ export default function PriceEditModal({
 
           <View style={styles.quantityContainer}>
             <Text style={styles.inputLabel}>Quantidade</Text>
-            <View style={styles.quantitySelector}>
+            <View style={styles.quantityInputContainer}>
               <TouchableOpacity
-                style={[styles.quantityButton, (isSubmitting || loading || currentQuantity <= 1) && styles.disabledButton]}
+                style={[styles.quantityButton, (isSubmitting || loading || currentQuantity <= 0.1) && styles.disabledButton]}
                 onPress={decreaseQuantity}
-                disabled={isSubmitting || loading || currentQuantity <= 1}
+                disabled={isSubmitting || loading || currentQuantity <= 0.1}
               >
-                <Ionicons name="remove" size={20} color={currentQuantity <= 1 ? '#ccc' : '#666'} />
+                <Ionicons name="remove" size={20} color={currentQuantity <= 0.1 ? '#ccc' : '#666'} />
               </TouchableOpacity>
-              <View style={styles.quantityDisplay}>
-                <Text style={styles.quantityText}>{currentQuantity}</Text>
+              <View style={styles.quantityInputWrapper}>
+                <TextInput
+                  style={styles.quantityInput}
+                  value={quantityText}
+                  onChangeText={handleQuantityTextChange}
+                  placeholder="1"
+                  keyboardType="numeric"
+                  selectTextOnFocus
+                />
                 <Text style={styles.unitText}>{unit}</Text>
               </View>
               <TouchableOpacity
@@ -154,6 +197,9 @@ export default function PriceEditModal({
                 <Ionicons name="add" size={20} color="#666" />
               </TouchableOpacity>
             </View>
+            <Text style={styles.inputHint}>
+              Você pode digitar números decimais (ex: 1,5 ou 2.3)
+            </Text>
           </View>
 
           <View style={styles.inputContainer}>
@@ -190,8 +236,8 @@ export default function PriceEditModal({
           <View style={styles.totalContainer}>
             <Text style={styles.totalLabel}>Total estimado:</Text>
             <Text style={styles.totalValue}>
-              {price && !isNaN(parseFloat(price.replace(',', '.'))) 
-                ? (parseFloat(price.replace(',', '.')) * currentQuantity).toLocaleString('pt-BR', {
+              {price && !isNaN(parseFloat(price.replace(',', '.'))) && quantityText && !isNaN(parseFloat(quantityText.replace(',', '.')))
+                ? (parseFloat(price.replace(',', '.')) * parseFloat(quantityText.replace(',', '.'))).toLocaleString('pt-BR', {
                     style: 'currency',
                     currency: 'BRL'
                   })
@@ -285,7 +331,7 @@ const styles = StyleSheet.create({
   quantityContainer: {
     marginBottom: 20,
   },
-  quantitySelector: {
+  quantityInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -299,10 +345,23 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 6,
   },
-  quantityDisplay: {
+  quantityInputWrapper: {
     alignItems: 'center',
     marginHorizontal: 20,
+    minWidth: 80,
+  },
+  quantityInput: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
     minWidth: 60,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    backgroundColor: '#fff',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
   quantityText: {
     fontSize: 18,
