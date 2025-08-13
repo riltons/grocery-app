@@ -15,6 +15,7 @@ import { StoreService } from '../../lib/stores';
 import { useToast } from '../../context/ToastContext';
 import { supabase } from '../../lib/supabase';
 import SafeContainer from '../../components/SafeContainer';
+import NearbySupermarketsModal from '../../components/NearbySupermarketsModal';
 
 export default function NewStore() {
   const router = useRouter();
@@ -24,10 +25,17 @@ export default function NewStore() {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showNearbyModal, setShowNearbyModal] = useState(false);
   
   // Validar formulário
   const isFormValid = name.trim().length > 0;
   
+  // Manipular seleção de supermercado próximo
+  const handleSelectSupermarket = (supermarketName: string, supermarketAddress: string) => {
+    setName(supermarketName);
+    setAddress(supermarketAddress);
+  };
+
   // Salvar nova loja
   const handleSaveStore = async () => {
     if (!isFormValid) {
@@ -85,6 +93,24 @@ export default function NewStore() {
       </View>
       
       <ScrollView style={styles.content}>
+        {/* Botão para buscar supermercados próximos */}
+        <TouchableOpacity 
+          style={styles.nearbyButton}
+          onPress={() => setShowNearbyModal(true)}
+        >
+          <Ionicons name="location" size={20} color="#4CAF50" />
+          <Text style={styles.nearbyButtonText}>
+            Buscar supermercados próximos
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#4CAF50" />
+        </TouchableOpacity>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>ou adicione manualmente</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
         <View style={styles.formGroup}>
           <Text style={styles.label}>Nome da Loja *</Text>
           <TextInput
@@ -93,7 +119,6 @@ export default function NewStore() {
             value={name}
             onChangeText={setName}
             maxLength={100}
-            autoFocus
           />
         </View>
         
@@ -125,6 +150,13 @@ export default function NewStore() {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Modal de supermercados próximos */}
+      <NearbySupermarketsModal
+        visible={showNearbyModal}
+        onClose={() => setShowNearbyModal(false)}
+        onSelectSupermarket={handleSelectSupermarket}
+      />
     </SafeContainer>
   );
 }
@@ -155,6 +187,42 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  nearbyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    gap: 8,
+  },
+  nearbyButtonText: {
+    color: '#4CAF50',
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e0e0e0',
+  },
+  dividerText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
   },
   formGroup: {
     marginBottom: 20,

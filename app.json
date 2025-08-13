@@ -30,7 +30,9 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "navigationBar": {
         "visible": "leanback"
@@ -39,7 +41,11 @@
     },
     "ios": {
       "bundleIdentifier": "com.riltongarcia.groceryapp",
-      "buildNumber": "1.0.0"
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Este app precisa acessar sua localização para sugerir supermercados próximos quando você adicionar uma nova loja.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Este app precisa acessar sua localização para sugerir supermercados próximos quando você adicionar uma nova loja."
+      }
     },
     "plugins": [
       "expo-router",
