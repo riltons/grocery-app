@@ -74,12 +74,9 @@ export class SharingService {
       throw new Error('Usuário já é participante desta lista');
     }
 
-    // Buscar o user_id do convidado se ele já estiver cadastrado
-    const { data: inviteeUser } = await supabase
-      .from('auth.users')
-      .select('id')
-      .eq('email', userEmail)
-      .single();
+    // Não buscar user_id do convidado para evitar problemas de RLS
+    // O user_id será preenchido quando o usuário aceitar o convite
+    const inviteeUser = null;
 
     // Criar o convite
     const { data: invitation, error: invitationError } = await supabase
@@ -477,23 +474,12 @@ export class InviteManager {
     }
 
     try {
-      // Buscar usuários cadastrados que correspondem ao email
-      const { data: users, error } = await supabase
-        .from('auth.users')
-        .select('id, email, raw_user_meta_data')
-        .ilike('email', `%${email}%`)
-        .limit(10);
-
-      if (error) {
-        console.error('Erro ao buscar usuários:', error);
-        return [];
+      // Não buscar usuários diretamente da tabela auth.users devido a restrições de RLS
+      // Retornar sugestão baseada no email digitado
+      if (this.isValidEmail(email)) {
+        return [{ id: '', email, name: email }];
       }
-
-      return users?.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.raw_user_meta_data?.name || user.email.split('@')[0]
-      })) || [];
+      return [];
 
     } catch (error) {
       console.error('Erro na busca de usuários:', error);
@@ -566,8 +552,7 @@ export class InviteManager {
       .from('invitations')
       .select(`
         *,
-        lists!inner(name),
-        inviter:auth.users!inviter_user_id(email, raw_user_meta_data)
+        lists!inner(name)
       `)
       .eq('invitee_email', emailToSearch)
       .eq('status', 'pending')
@@ -975,10 +960,7 @@ export class PermissionManager {
     // Buscar proprietário da lista
     const { data: list, error: listError } = await supabase
       .from('lists')
-      .select(`
-        user_id,
-        auth.users!inner(email, raw_user_meta_data)
-      `)
+      .select('user_id')
       .eq('id', listId)
       .single();
 
@@ -993,8 +975,7 @@ export class PermissionManager {
         id,
         user_id,
         permission,
-        created_at,
-        auth.users!inner(email, raw_user_meta_data)
+        created_at
       `)
       .eq('list_id', listId);
 
@@ -1008,8 +989,8 @@ export class PermissionManager {
     participants.push({
       id: 'owner',
       userId: list.user_id,
-      email: list.auth.users.email,
-      name: list.auth.users.raw_user_meta_data?.name || list.auth.users.email.split('@')[0],
+      email: 'Proprietário',
+      name: 'Proprietário da Lista',
       permission: 'admin' as SharePermission,
       isOwner: true,
       joinedAt: new Date().toISOString() // Proprietário "entrou" quando criou a lista
@@ -1020,8 +1001,8 @@ export class PermissionManager {
       participants.push({
         id: share.id,
         userId: share.user_id,
-        email: share.auth.users.email,
-        name: share.auth.users.raw_user_meta_data?.name || share.auth.users.email.split('@')[0],
+        email: 'Participante',
+        name: 'Usuário Compartilhado',
         permission: share.permission,
         isOwner: false,
         joinedAt: share.created_at

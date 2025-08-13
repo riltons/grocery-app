@@ -59,7 +59,10 @@ export default function InvitationModal({
 
       const { data: invitations, error } = await supabase
         .from('invitations')
-        .select('*')
+        .select(`
+          *,
+          lists!inner(name)
+        `)
         .eq('invitee_email', user.email)
         .eq('status', 'pending')
         .gt('expires_at', new Date().toISOString())
@@ -69,25 +72,14 @@ export default function InvitationModal({
         throw error;
       }
 
-      // Buscar nomes das listas separadamente
-      const listIds = invitations?.map(inv => inv.list_id) || [];
-      const { data: lists } = await supabase
-        .from('lists')
-        .select('id, name')
-        .in('id', listIds);
-
-      if (error) {
-        throw error;
-      }
-
       // Converter para o formato esperado pelo componente
       const formattedInvitations: MockInvitation[] = (invitations || []).map(inv => {
-        const listName = lists?.find(l => l.id === inv.list_id)?.name || 'Lista sem nome';
+        const listName = (inv.lists as any)?.name || 'Lista sem nome';
         return {
           id: inv.id,
           listName,
           inviterName: 'Usuário',
-          inviterEmail: inv.inviter_user_id.substring(0, 8) + '...',
+          inviterEmail: 'Usuário que convidou',
           permission: inv.permission as SharePermission,
           createdAt: inv.created_at,
           expiresAt: inv.expires_at,
@@ -231,16 +223,16 @@ export default function InvitationModal({
     });
   };
 
-  const renderInvitation = (invitation: ShareInvitation) => (
+  const renderInvitation = (invitation: MockInvitation) => (
     <View key={invitation.id} style={styles.invitationCard}>
       <View style={styles.invitationHeader}>
         <View style={styles.invitationInfo}>
-          <Text style={styles.listName}>{invitation.list_name}</Text>
+          <Text style={styles.listName}>{invitation.listName}</Text>
           <Text style={styles.inviterInfo}>
-            Convite de {invitation.inviter_email}
+            Convite de {invitation.inviterName}
           </Text>
           <Text style={styles.inviterEmail}>
-            {invitation.inviter_email}
+            {invitation.inviterEmail}
           </Text>
         </View>
         <View style={styles.permissionBadge}>
@@ -258,10 +250,10 @@ export default function InvitationModal({
 
       <View style={styles.invitationMeta}>
         <Text style={styles.dateText}>
-          Enviado em {formatDate(invitation.created_at)}
+          Enviado em {formatDate(invitation.createdAt)}
         </Text>
         <Text style={styles.expiryText}>
-          Expira em {formatDate(invitation.expires_at)}
+          Expira em {formatDate(invitation.expiresAt)}
         </Text>
       </View>
 
