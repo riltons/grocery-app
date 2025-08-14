@@ -879,6 +879,454 @@ export const InvoiceService = {
   },
 
   /**
+   * Vincula produtos da nota fiscal a uma lista e marca como comprados usando função SQL otimizada
+   */
+  linkInvoiceToListAndMarkPurchased: async (
+    invoiceId: string,
+    listId: string
+  ): Promise<{ data: any; error: any }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      console.log('📄 Vinculando produtos da nota fiscal à lista e marcando como comprados...');
+      
+      // Usar a função SQL otimizada
+      const { data: result, error } = await supabase.rpc('mark_invoice_products_as_purchased', {
+        p_invoice_id: invoiceId,
+        p_list_id: listId,
+        p_user_id: user.id,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const resultData = result[0];
+      
+      console.log('📄 Produtos vinculados e marcados como comprados:', {
+        updatedItems: resultData.updated_items_count,
+        addedItems: resultData.added_items_count,
+      });
+
+      return {
+        data: {
+          updatedItemsCount: resultData.updated_items_count,
+          addedItemsCount: resultData.added_items_count,
+          matchedProducts: resultData.matched_products,
+        },
+        error: null,
+      };
+    } catch (error) {
+      console.error('Erro ao vincular nota fiscal à lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Vincula produtos da nota fiscal a uma lista e marca como comprados (método alternativo)
+   */
+  linkInvoiceToListAndMarkPurchasedLegacy: async (
+    invoiceData: InvoiceData,
+    listId: string,
+    options: {
+      updateQuantities?: boolean;
+      updatePrices?: boolean;
+      addNewProducts?: boolean;
+    } = {}
+  ): Promise<{ data: any; error: any }> => {
+    try {
+      console.log('📄 Vinculando produtos da nota fiscal à lista e marcando como comprados...');
+      
+      // Usar o método existente com markAsPurchased = true
+      const result = await InvoiceService.updateShoppingListFromInvoice(
+        listId,
+        invoiceData,
+        {
+          updateQuantities: options.updateQuantities ?? true,
+          updatePrices: options.updatePrices ?? true,
+          addNewProducts: options.addNewProducts ?? true,
+          markAsPurchased: true, // Sempre marcar como comprado
+        }
+      );
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      console.log('📄 Produtos vinculados e marcados como comprados:', {
+        updatedItems: result.data?.updatedItems?.length || 0,
+        addedItems: result.data?.addedItems?.length || 0,
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Erro ao vincular nota fiscal à lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Salva uma nota fiscal completa no banco de dados
+   */
+  saveInvoice: async (
+    invoiceData: InvoiceData, 
+    options: {
+      storeId?: string;
+      listId?: string;
+      xmlUrl?: string;
+      qrCodeData?: string;
+      linkToListAndMarkPurchased?: boolean;
+    } = {}
+  ): Promise<{ data: any; error: any }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      console.log('📄 Salvando nota fiscal no banco de dados...');
+
+      // Verificar se a nota fiscal já existe
+      const { data: existingInvoice, error: checkError } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('number', invoiceData.number)
+        .eq('store_document', invoiceData.storeDocument)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('📄 Erro ao verificar nota fiscal existente:', checkError);
+        throw checkError;
+      }
+
+      if (existingInvoice) {
+        console.log('📄 Nota fiscal já existe:', existingInvoice.id);
+        return { 
+          data: null, 
+          error: new Error('Esta nota fiscal já foi processada anteriormente') 
+        };
+      }
+
+      console.log('📄 Preparando dados para inserção:', {
+        number: invoiceData.number,
+        date: invoiceData.date,
+        store_name: invoiceData.storeName,
+        store_document: invoiceData.storeDocument,
+        total_amount: invoiceData.totalAmount,
+        user_id: user.id,
+      });
+
+      // Inserir a nota fiscal
+      const invoicePayload = {
+        number: String(invoiceData.number),
+        date: invoiceData.date,
+        store_name: String(invoiceData.storeName),
+        store_document: String(invoiceData.storeDocument || ''),
+        total_amount: Number(invoiceData.totalAmount) || 0,
+        xml_url: options.xmlUrl || null,
+        qr_code_data: options.qrCodeData || null,
+        store_id: options.storeId || null,
+        list_id: options.listId || null,
+        user_id: user.id,
+      };
+
+      console.log('📄 Payload final:', invoicePayload);
+
+      const { data: savedInvoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .insert(invoicePayload)
+        .select()
+        .single();
+
+      if (invoiceError) {
+        console.error('📄 Erro ao inserir nota fiscal:', invoiceError);
+        throw invoiceError;
+      }
+
+      console.log('📄 Nota fiscal inserida com sucesso:', savedInvoice.id);
+
+      // Inserir os itens da nota fiscal
+      const invoiceItems = invoiceData.products.map(product => ({
+        invoice_id: savedInvoice.id,
+        name: product.name,
+        quantity: product.quantity,
+        unit: product.unit,
+        unit_price: product.unitPrice,
+        total_price: product.totalPrice,
+        barcode: product.barcode,
+        brand: product.brand,
+        category: product.category,
+        user_id: user.id,
+      }));
+
+      const { data: savedItems, error: itemsError } = await supabase
+        .from('invoice_items')
+        .insert(invoiceItems)
+        .select();
+
+      if (itemsError) {
+        // Se falhar ao inserir itens, deletar a nota fiscal
+        await supabase.from('invoices').delete().eq('id', savedInvoice.id);
+        throw itemsError;
+      }
+
+      // Se há uma lista vinculada, criar o link
+      if (options.listId) {
+        await supabase
+          .from('invoice_list_links')
+          .insert({
+            invoice_id: savedInvoice.id,
+            list_id: options.listId,
+            user_id: user.id,
+          });
+
+        // Se solicitado, vincular produtos à lista e marcar como comprados
+        if (options.linkToListAndMarkPurchased) {
+          const linkResult = await InvoiceService.linkInvoiceToListAndMarkPurchased(
+            savedInvoice.id,
+            options.listId
+          );
+
+          if (linkResult.error) {
+            console.warn('Erro ao vincular produtos à lista:', linkResult.error);
+          } else {
+            console.log('📄 Produtos vinculados à lista e marcados como comprados:', linkResult.data);
+          }
+        }
+      }
+
+      console.log('📄 Nota fiscal salva com sucesso:', savedInvoice.id);
+
+      return {
+        data: {
+          invoice: savedInvoice,
+          items: savedItems,
+          itemsCount: savedItems.length,
+        },
+        error: null,
+      };
+
+    } catch (error) {
+      console.error('Erro ao salvar nota fiscal:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Lista notas fiscais do usuário
+   */
+  getUserInvoices: async (options: {
+    limit?: number;
+    offset?: number;
+    storeId?: string;
+    listId?: string;
+  } = {}): Promise<{ data: any[] | null; error: any }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      let query = supabase
+        .from('invoice_summary')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false });
+
+      if (options.storeId) {
+        query = query.eq('store_id', options.storeId);
+      }
+
+      if (options.listId) {
+        query = query.eq('list_id', options.listId);
+      }
+
+      if (options.limit) {
+        query = query.limit(options.limit);
+      }
+
+      if (options.offset) {
+        query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
+      }
+
+      const { data, error } = await query;
+
+      return { data, error };
+
+    } catch (error) {
+      console.error('Erro ao buscar notas fiscais:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Busca uma nota fiscal específica com seus itens
+   */
+  getInvoiceById: async (invoiceId: string): Promise<{ data: any | null; error: any }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Buscar a nota fiscal
+      const { data: invoice, error: invoiceError } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          stores:store_id(id, name, address),
+          lists:list_id(id, name)
+        `)
+        .eq('id', invoiceId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (invoiceError) {
+        throw invoiceError;
+      }
+
+      // Buscar os itens da nota fiscal
+      const { data: items, error: itemsError } = await supabase
+        .from('invoice_items')
+        .select(`
+          *,
+          specific_products:specific_product_id(id, name, brand),
+          generic_products:generic_product_id(id, name)
+        `)
+        .eq('invoice_id', invoiceId)
+        .eq('user_id', user.id)
+        .order('name');
+
+      if (itemsError) {
+        throw itemsError;
+      }
+
+      return {
+        data: {
+          ...invoice,
+          items,
+        },
+        error: null,
+      };
+
+    } catch (error) {
+      console.error('Erro ao buscar nota fiscal:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Vincula uma nota fiscal a uma loja
+   */
+  linkInvoiceToStore: async (invoiceId: string, storeId: string): Promise<{ data: any; error: any }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .update({ store_id: storeId })
+        .eq('id', invoiceId)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      return { data, error };
+
+    } catch (error) {
+      console.error('Erro ao vincular nota fiscal à loja:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Vincula uma nota fiscal a uma lista
+   */
+  linkInvoiceToList: async (invoiceId: string, listId: string): Promise<{ data: any; error: any }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Atualizar a nota fiscal
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({ list_id: listId })
+        .eq('id', invoiceId)
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Criar o link na tabela de relacionamento
+      const { data, error } = await supabase
+        .from('invoice_list_links')
+        .upsert({
+          invoice_id: invoiceId,
+          list_id: listId,
+          user_id: user.id,
+        })
+        .select()
+        .single();
+
+      return { data, error };
+
+    } catch (error) {
+      console.error('Erro ao vincular nota fiscal à lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
+   * Remove vinculação de uma nota fiscal com uma lista
+   */
+  unlinkInvoiceFromList: async (invoiceId: string, listId: string): Promise<{ data: any; error: any }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      // Remover da tabela principal se for a lista principal
+      await supabase
+        .from('invoices')
+        .update({ list_id: null })
+        .eq('id', invoiceId)
+        .eq('list_id', listId)
+        .eq('user_id', user.id);
+
+      // Remover da tabela de relacionamento
+      const { data, error } = await supabase
+        .from('invoice_list_links')
+        .delete()
+        .eq('invoice_id', invoiceId)
+        .eq('list_id', listId)
+        .eq('user_id', user.id);
+
+      return { data, error };
+
+    } catch (error) {
+      console.error('Erro ao desvincular nota fiscal da lista:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
    * Extrai URL do XML a partir do QR Code da nota fiscal
    */
   extractXMLUrlFromQRCode: (qrCodeData: string): string | null => {

@@ -13,7 +13,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { InvoiceService, InvoiceData, InvoiceProduct } from '../lib/invoiceService';
 import { ListsService } from '../lib/lists';
+import { StoreService } from '../lib/stores';
 import InvoiceQRScanner from './InvoiceQRScanner';
+import StoreSelectionModal from './StoreSelectionModal';
+import SimpleListSelectionModal from './SimpleListSelectionModal';
 
 interface InvoiceProcessModalProps {
     visible: boolean;
@@ -38,6 +41,31 @@ export default function InvoiceProcessModal({
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [saveResults, setSaveResults] = useState<any>(null);
+    const [selectedStoreForInvoice, setSelectedStoreForInvoice] = useState<any>(null);
+    const [showStoreSelection, setShowStoreSelection] = useState(false);
+    const [showListSelection, setShowListSelection] = useState(false);
+    const [selectedListForInvoice, setSelectedListForInvoice] = useState<any>(null);
+    const [availableStores, setAvailableStores] = useState<any[]>([]);
+    const [availableLists, setAvailableLists] = useState<any[]>([]);
+
+    // Load available stores and lists
+    const loadAvailableData = async () => {
+        try {
+            // Carregar lojas
+            const { data: stores } = await StoreService.getStores();
+            if (stores) {
+                setAvailableStores(stores);
+            }
+
+            // Carregar listas
+            const { data: lists } = await ListsService.getPendingLists();
+            if (lists) {
+                setAvailableLists(lists);
+            }
+        } catch (error) {
+            console.error('Erro ao carregar dados:', error);
+        }
+    };
 
     // Reset state when modal opens
     useEffect(() => {
@@ -50,6 +78,11 @@ export default function InvoiceProcessModal({
             setError(null);
             setSaving(false);
             setSaveResults(null);
+            setSelectedStoreForInvoice(null);
+            setSelectedListForInvoice(null);
+            setShowStoreSelection(false);
+            setShowListSelection(false);
+            loadAvailableData();
         }
     }, [visible]);
 
@@ -196,30 +229,54 @@ export default function InvoiceProcessModal({
         }
     };
 
-    const handleSaveProducts = async () => {
+    const handleSaveInvoice = async (markAsPurchased: boolean = false) => {
         if (!invoiceData) return;
 
         setSaving(true);
         setError(null);
 
         try {
-            const { data, error } = await InvoiceService.saveInvoiceProducts(invoiceData);
+            const targetListId = selectedListForInvoice?.id || listId;
+            
+            // Salvar a nota fiscal
+            const { data: invoiceResult, error: invoiceError } = await InvoiceService.saveInvoice(
+                invoiceData,
+                {
+                    storeId: selectedStoreForInvoice?.id,
+                    listId: targetListId,
+                    qrCodeData: manualUrl, // Usar a URL como referência
+                    linkToListAndMarkPurchased: markAsPurchased && !!targetListId,
+                }
+            );
 
-            if (error) {
-                throw new Error('Erro ao salvar produtos da nota fiscal');
+            if (invoiceError) {
+                throw new Error('Erro ao salvar nota fiscal');
             }
 
-            setSaveResults(data);
+            // Salvar produtos no catálogo
+            const { data: productsResult, error: productsError } = await InvoiceService.saveInvoiceProducts(invoiceData);
+
+            if (productsError) {
+                console.warn('Erro ao salvar produtos no catálogo:', productsError);
+            }
+
+            setSaveResults({
+                invoice: invoiceResult,
+                products: productsResult,
+            });
             
-            const totalSaved = (data?.savedGenericProducts.length || 0) + (data?.savedSpecificProducts.length || 0);
-            const totalExisting = data?.existingProducts.length || 0;
-            const totalSkipped = data?.skippedProducts.length || 0;
+            const totalSaved = (productsResult?.savedGenericProducts.length || 0) + (productsResult?.savedSpecificProducts.length || 0);
+            const totalExisting = productsResult?.existingProducts.length || 0;
 
             Alert.alert(
-                'Produtos Salvos!',
-                `✅ ${totalSaved} novos produtos salvos\n` +
+                'Nota Fiscal Salva!',
+                `✅ Nota fiscal salva com sucesso\n` +
+                `📦 ${invoiceResult.itemsCount} itens da nota\n` +
+                `🆕 ${totalSaved} novos produtos no catálogo\n` +
                 `ℹ️ ${totalExisting} produtos já existiam\n` +
-                `⚠️ ${totalSkipped} produtos ignorados`,
+                (selectedStoreForInvoice ? `🏪 Vinculada à loja: ${selectedStoreForInvoice.name}\n` : '') +
+                (targetListId ? `📋 Vinculada à lista: ${selectedListForInvoice?.name || 'Lista atual'}\n` : '') +
+                (markAsPurchased && targetListId ? `✅ Produtos marcados como comprados na lista` : ''),
                 [
                     {
                         text: 'OK',
@@ -229,8 +286,8 @@ export default function InvoiceProcessModal({
             );
 
         } catch (err: any) {
-            setError(err.message || 'Erro ao salvar produtos');
-            Alert.alert('Erro', err.message || 'Erro ao salvar produtos da nota fiscal');
+            setError(err.message || 'Erro ao salvar nota fiscal');
+            Alert.alert('Erro', err.message || 'Erro ao salvar nota fiscal');
         } finally {
             setSaving(false);
         }
@@ -445,26 +502,98 @@ export default function InvoiceProcessModal({
                     </View>
 
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Salvar Produtos</Text>
+                        <Text style={styles.sectionTitle}>Salvar Nota Fiscal</Text>
                         <Text style={styles.sectionDescription}>
-                            Salvar os produtos da nota fiscal no seu catálogo pessoal
+                            Salvar a nota fiscal e produtos no seu histórico
                         </Text>
-                        
-                        <TouchableOpacity
-                            onPress={handleSaveProducts}
-                            style={[styles.button, styles.primaryButton]}
-                            disabled={saving}
-                        >
-                            {saving ? (
-                                <ActivityIndicator size="small" color="white" />
-                            ) : (
-                                <Text style={styles.buttonText}>Salvar Produtos</Text>
+
+                        {/* Seleção de Loja */}
+                        <View style={styles.linkSection}>
+                            <Text style={styles.linkLabel}>Vincular à Loja (Opcional)</Text>
+                            <TouchableOpacity
+                                onPress={() => setShowStoreSelection(true)}
+                                style={styles.linkButton}
+                            >
+                                <Ionicons name="storefront-outline" size={20} color="#007AFF" />
+                                <Text style={styles.linkButtonText}>
+                                    {selectedStoreForInvoice ? selectedStoreForInvoice.name : 'Selecionar Loja'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={16} color="#007AFF" />
+                            </TouchableOpacity>
+                            {selectedStoreForInvoice && (
+                                <TouchableOpacity
+                                    onPress={() => setSelectedStoreForInvoice(null)}
+                                    style={styles.clearButton}
+                                >
+                                    <Text style={styles.clearButtonText}>Remover vinculação</Text>
+                                </TouchableOpacity>
                             )}
-                        </TouchableOpacity>
+                        </View>
+
+                        {/* Seleção de Lista */}
+                        <View style={styles.linkSection}>
+                            <Text style={styles.linkLabel}>Vincular à Lista (Opcional)</Text>
+                            <TouchableOpacity
+                                onPress={() => setShowListSelection(true)}
+                                style={styles.linkButton}
+                            >
+                                <Ionicons name="list-outline" size={20} color="#007AFF" />
+                                <Text style={styles.linkButtonText}>
+                                    {selectedListForInvoice ? selectedListForInvoice.name : 
+                                     listId ? 'Lista atual selecionada' : 'Selecionar Lista'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={16} color="#007AFF" />
+                            </TouchableOpacity>
+                            {selectedListForInvoice && (
+                                <TouchableOpacity
+                                    onPress={() => setSelectedListForInvoice(null)}
+                                    style={styles.clearButton}
+                                >
+                                    <Text style={styles.clearButtonText}>Remover vinculação</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                        
+                        {/* Mostrar botões diferentes se há lista vinculada */}
+                        {(selectedListForInvoice || listId) ? (
+                            <>
+                                <TouchableOpacity
+                                    onPress={() => handleSaveInvoice(true)}
+                                    style={[styles.button, styles.primaryButton]}
+                                    disabled={saving}
+                                >
+                                    {saving ? (
+                                        <ActivityIndicator size="small" color="white" />
+                                    ) : (
+                                        <Text style={styles.buttonText}>Salvar e Marcar como Comprado</Text>
+                                    )}
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity
+                                    onPress={() => handleSaveInvoice(false)}
+                                    style={[styles.button, styles.secondaryButton]}
+                                    disabled={saving}
+                                >
+                                    <Text style={styles.buttonText}>Salvar sem Marcar</Text>
+                                </TouchableOpacity>
+                            </>
+                        ) : (
+                            <TouchableOpacity
+                                onPress={() => handleSaveInvoice(false)}
+                                style={[styles.button, styles.primaryButton]}
+                                disabled={saving}
+                            >
+                                {saving ? (
+                                    <ActivityIndicator size="small" color="white" />
+                                ) : (
+                                    <Text style={styles.buttonText}>Salvar Nota Fiscal</Text>
+                                )}
+                            </TouchableOpacity>
+                        )}
                         
                         <TouchableOpacity
                             onPress={onClose}
-                            style={[styles.button, styles.secondaryButton]}
+                            style={[styles.button, styles.tertiaryButton]}
                         >
                             <Text style={styles.buttonText}>Fechar sem Salvar</Text>
                         </TouchableOpacity>
@@ -661,14 +790,42 @@ export default function InvoiceProcessModal({
     };
 
     return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            presentationStyle="fullScreen"
-            onRequestClose={onClose}
-        >
-            {renderCurrentStep()}
-        </Modal>
+        <>
+            <Modal
+                visible={visible}
+                animationType="slide"
+                presentationStyle="fullScreen"
+                onRequestClose={onClose}
+            >
+                {renderCurrentStep()}
+            </Modal>
+
+            {/* Modal de Seleção de Loja */}
+            <StoreSelectionModal
+                visible={showStoreSelection}
+                onClose={() => setShowStoreSelection(false)}
+                onSelectStore={(store) => {
+                    setSelectedStoreForInvoice(store);
+                    setShowStoreSelection(false);
+                }}
+                stores={availableStores}
+                title="Vincular à Loja"
+                subtitle="Selecione uma loja para vincular esta nota fiscal"
+            />
+
+            {/* Modal de Seleção de Lista */}
+            <SimpleListSelectionModal
+                visible={showListSelection}
+                onClose={() => setShowListSelection(false)}
+                onSelectList={(list) => {
+                    setSelectedListForInvoice(list);
+                    setShowListSelection(false);
+                }}
+                lists={availableLists}
+                title="Vincular à Lista"
+                subtitle="Selecione uma lista para vincular esta nota fiscal"
+            />
+        </>
     );
 }
 
@@ -953,5 +1110,38 @@ const styles = StyleSheet.create({
         color: '#666',
         marginBottom: 4,
         lineHeight: 18,
+    },
+    linkSection: {
+        marginBottom: 16,
+    },
+    linkLabel: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 8,
+    },
+    linkButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8f9fa',
+        borderWidth: 1,
+        borderColor: '#e9ecef',
+        borderRadius: 8,
+        padding: 12,
+        gap: 8,
+    },
+    linkButtonText: {
+        flex: 1,
+        fontSize: 14,
+        color: '#007AFF',
+    },
+    clearButton: {
+        marginTop: 8,
+        alignSelf: 'flex-start',
+    },
+    clearButtonText: {
+        fontSize: 12,
+        color: '#666',
+        textDecorationLine: 'underline',
     },
 });
