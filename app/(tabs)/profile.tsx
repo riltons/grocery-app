@@ -63,6 +63,12 @@ export default function ProfileTab() {
       onPress: () => router.push('/(tabs)/products'),
     },
     {
+      icon: 'receipt-outline',
+      title: 'Processar Nota Fiscal',
+      subtitle: 'Escanear QR Code de nota fiscal (DEMO)',
+      onPress: () => router.push('/invoice-demo'),
+    },
+    {
       icon: 'pricetag-outline',
       title: 'Categorias',
       subtitle: 'Gerenciar categorias de produtos',

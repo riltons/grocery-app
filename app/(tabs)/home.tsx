@@ -283,6 +283,12 @@ export default function HomeTab() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
+            style={styles.invoiceButton}
+            onPress={() => router.push('/invoice-demo')}
+          >
+            <Ionicons name="receipt-outline" size={20} color="#007AFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.invitationButton}
             onPress={() => setInvitationModalVisible(true)}
           >
@@ -413,6 +419,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  invoiceButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#e3f2fd',
   },
   invitationButton: {
     position: 'relative',
