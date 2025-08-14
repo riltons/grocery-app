@@ -376,6 +376,220 @@ export const InvoiceService = {
   },
 
   /**
+   * Busca ou cria uma categoria por nome
+   */
+  getOrCreateCategory: async (categoryName: string, userId: string): Promise<string | null> => {
+    try {
+      // Buscar categoria por nome
+      const { data: categories } = await supabase
+        .from('categories')
+        .select('*')
+        .ilike('name', categoryName || 'Outros')
+        .limit(1);
+      
+      if (categories && categories.length > 0) {
+        return categories[0].id;
+      }
+      
+      // Se não encontrou categoria, buscar ou criar categoria "Outros"
+      const { data: defaultCategories } = await supabase
+        .from('categories')
+        .select('*')
+        .ilike('name', 'Outros')
+        .limit(1);
+      
+      if (defaultCategories && defaultCategories.length > 0) {
+        return defaultCategories[0].id;
+      }
+      
+      // Criar categoria "Outros" se não existir
+      const { data: newCategory } = await supabase
+        .from('categories')
+        .insert({
+          name: 'Outros',
+          user_id: userId,
+        })
+        .select()
+        .single();
+      
+      return newCategory?.id || null;
+    } catch (error) {
+      console.error('Erro ao buscar/criar categoria:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Salva produtos da nota fiscal no banco de dados
+   */
+  saveInvoiceProducts: async (invoiceData: InvoiceData): Promise<{
+    data: {
+      savedGenericProducts: any[];
+      savedSpecificProducts: any[];
+      existingProducts: any[];
+      skippedProducts: any[];
+    } | null;
+    error: any;
+  }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('Usuário não autenticado');
+      }
+
+      console.log('📄 Salvando produtos da nota fiscal no banco de dados...');
+      
+      const savedGenericProducts: any[] = [];
+      const savedSpecificProducts: any[] = [];
+      const existingProducts: any[] = [];
+      const skippedProducts: any[] = [];
+
+      for (const invoiceProduct of invoiceData.products) {
+        try {
+          // Verificar se produto com código de barras já existe
+          if (invoiceProduct.barcode) {
+            const { data: existingSpecific } = await ProductService.getSpecificProductByBarcode(invoiceProduct.barcode);
+            
+            if (existingSpecific) {
+              console.log('📄 Produto específico já existe:', invoiceProduct.name);
+              existingProducts.push({
+                ...existingSpecific,
+                invoiceData: invoiceProduct
+              });
+              continue;
+            }
+          }
+
+          // Verificar se produto genérico com mesmo nome já existe
+          const { data: genericProducts } = await ProductService.getGenericProducts();
+          let existingGeneric = genericProducts?.find(gp => 
+            gp.name.toLowerCase().trim() === invoiceProduct.name.toLowerCase().trim()
+          );
+
+          // Se produto tem código de barras, criar como específico
+          if (invoiceProduct.barcode) {
+            // Se não existe produto genérico, criar um
+            if (!existingGeneric) {
+              // Buscar ou criar categoria
+              const categoryId = await InvoiceService.getOrCreateCategory(
+                invoiceProduct.category || 'Outros', 
+                user.id
+              );
+              
+              const { data: newGenericProduct, error: genericError } = await ProductService.createGenericProduct({
+                name: invoiceProduct.name,
+                category_id: categoryId,
+                user_id: user.id,
+              });
+
+              if (genericError) {
+                console.error('Erro ao criar produto genérico:', genericError);
+                skippedProducts.push({
+                  product: invoiceProduct,
+                  reason: 'Erro ao criar produto genérico',
+                  error: genericError
+                });
+                continue;
+              }
+
+              existingGeneric = newGenericProduct;
+              savedGenericProducts.push(newGenericProduct);
+            }
+
+            // Criar produto específico
+            const { data: newSpecificProduct, error: specificError } = await ProductService.createSpecificProduct({
+              name: invoiceProduct.name,
+              brand: invoiceProduct.brand || null,
+              barcode: invoiceProduct.barcode,
+              barcode_type: 'EAN13',
+              generic_product_id: existingGeneric!.id,
+              user_id: user.id,
+            });
+
+            if (specificError) {
+              console.error('Erro ao criar produto específico:', specificError);
+              skippedProducts.push({
+                product: invoiceProduct,
+                reason: 'Erro ao criar produto específico',
+                error: specificError
+              });
+              continue;
+            }
+
+            savedSpecificProducts.push(newSpecificProduct);
+            console.log('📄 Produto específico salvo:', invoiceProduct.name);
+
+          } else {
+            // Produto sem código de barras - criar/usar apenas genérico
+            if (!existingGeneric) {
+              // Buscar ou criar categoria
+              const categoryId = await InvoiceService.getOrCreateCategory(
+                invoiceProduct.category || 'Outros', 
+                user.id
+              );
+              
+              const { data: newGenericProduct, error: genericError } = await ProductService.createGenericProduct({
+                name: invoiceProduct.name,
+                category_id: categoryId,
+                user_id: user.id,
+              });
+
+              if (genericError) {
+                console.error('Erro ao criar produto genérico:', genericError);
+                skippedProducts.push({
+                  product: invoiceProduct,
+                  reason: 'Erro ao criar produto genérico',
+                  error: genericError
+                });
+                continue;
+              }
+
+              savedGenericProducts.push(newGenericProduct);
+              console.log('📄 Produto genérico salvo:', invoiceProduct.name);
+            } else {
+              console.log('📄 Produto genérico já existe:', invoiceProduct.name);
+              existingProducts.push({
+                ...existingGeneric,
+                invoiceData: invoiceProduct
+              });
+            }
+          }
+
+        } catch (error) {
+          console.error('Erro ao processar produto:', invoiceProduct.name, error);
+          skippedProducts.push({
+            product: invoiceProduct,
+            reason: 'Erro no processamento',
+            error
+          });
+        }
+      }
+
+      console.log('📄 Salvamento concluído:', {
+        savedGenericProducts: savedGenericProducts.length,
+        savedSpecificProducts: savedSpecificProducts.length,
+        existingProducts: existingProducts.length,
+        skippedProducts: skippedProducts.length,
+      });
+
+      return {
+        data: {
+          savedGenericProducts,
+          savedSpecificProducts,
+          existingProducts,
+          skippedProducts,
+        },
+        error: null,
+      };
+
+    } catch (error) {
+      console.error('Erro ao salvar produtos da nota fiscal:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
    * Processa uma nota fiscal e adiciona produtos ao banco de dados
    */
   processInvoice: async (invoiceData: InvoiceData): Promise<{ 
@@ -429,14 +643,11 @@ export const InvoiceService = {
           );
           
           if (!genericProduct) {
-            // Buscar categoria por nome
-            const { data: categories } = await supabase
-              .from('categories')
-              .select('*')
-              .ilike('name', invoiceProduct.category || 'Outros')
-              .limit(1);
-            
-            const categoryId = categories?.[0]?.id || null;
+            // Buscar ou criar categoria
+            const categoryId = await InvoiceService.getOrCreateCategory(
+              invoiceProduct.category || 'Outros', 
+              user.id
+            );
             
             // Criar produto genérico
             const { data: newGenericProduct } = await ProductService.createGenericProduct({

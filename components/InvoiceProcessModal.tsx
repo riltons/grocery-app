@@ -36,6 +36,8 @@ export default function InvoiceProcessModal({
     const [manualUrl, setManualUrl] = useState('');
     const [comparisonData, setComparisonData] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [saveResults, setSaveResults] = useState<any>(null);
 
     // Reset state when modal opens
     useEffect(() => {
@@ -46,6 +48,8 @@ export default function InvoiceProcessModal({
             setManualUrl('');
             setComparisonData(null);
             setError(null);
+            setSaving(false);
+            setSaveResults(null);
         }
     }, [visible]);
 
@@ -189,6 +193,46 @@ export default function InvoiceProcessModal({
             throw err;
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSaveProducts = async () => {
+        if (!invoiceData) return;
+
+        setSaving(true);
+        setError(null);
+
+        try {
+            const { data, error } = await InvoiceService.saveInvoiceProducts(invoiceData);
+
+            if (error) {
+                throw new Error('Erro ao salvar produtos da nota fiscal');
+            }
+
+            setSaveResults(data);
+            
+            const totalSaved = (data?.savedGenericProducts.length || 0) + (data?.savedSpecificProducts.length || 0);
+            const totalExisting = data?.existingProducts.length || 0;
+            const totalSkipped = data?.skippedProducts.length || 0;
+
+            Alert.alert(
+                'Produtos Salvos!',
+                `✅ ${totalSaved} novos produtos salvos\n` +
+                `ℹ️ ${totalExisting} produtos já existiam\n` +
+                `⚠️ ${totalSkipped} produtos ignorados`,
+                [
+                    {
+                        text: 'OK',
+                        onPress: onClose,
+                    },
+                ]
+            );
+
+        } catch (err: any) {
+            setError(err.message || 'Erro ao salvar produtos');
+            Alert.alert('Erro', err.message || 'Erro ao salvar produtos da nota fiscal');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -401,12 +445,59 @@ export default function InvoiceProcessModal({
                     </View>
 
                     <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Salvar Produtos</Text>
+                        <Text style={styles.sectionDescription}>
+                            Salvar os produtos da nota fiscal no seu catálogo pessoal
+                        </Text>
+                        
+                        <TouchableOpacity
+                            onPress={handleSaveProducts}
+                            style={[styles.button, styles.primaryButton]}
+                            disabled={saving}
+                        >
+                            {saving ? (
+                                <ActivityIndicator size="small" color="white" />
+                            ) : (
+                                <Text style={styles.buttonText}>Salvar Produtos</Text>
+                            )}
+                        </TouchableOpacity>
+                        
                         <TouchableOpacity
                             onPress={onClose}
-                            style={[styles.button, styles.primaryButton]}
+                            style={[styles.button, styles.secondaryButton]}
                         >
-                            <Text style={styles.buttonText}>Concluir</Text>
+                            <Text style={styles.buttonText}>Fechar sem Salvar</Text>
                         </TouchableOpacity>
+                        
+                        {saveResults && (
+                            <View style={styles.saveResultsContainer}>
+                                <Text style={styles.saveResultsTitle}>Resultados do Salvamento:</Text>
+                                
+                                {saveResults.savedGenericProducts.length > 0 && (
+                                    <Text style={styles.saveResultsText}>
+                                        ✅ {saveResults.savedGenericProducts.length} produtos genéricos salvos
+                                    </Text>
+                                )}
+                                
+                                {saveResults.savedSpecificProducts.length > 0 && (
+                                    <Text style={styles.saveResultsText}>
+                                        ✅ {saveResults.savedSpecificProducts.length} produtos específicos salvos
+                                    </Text>
+                                )}
+                                
+                                {saveResults.existingProducts.length > 0 && (
+                                    <Text style={styles.saveResultsText}>
+                                        ℹ️ {saveResults.existingProducts.length} produtos já existiam
+                                    </Text>
+                                )}
+                                
+                                {saveResults.skippedProducts.length > 0 && (
+                                    <Text style={styles.saveResultsText}>
+                                        ⚠️ {saveResults.skippedProducts.length} produtos ignorados
+                                    </Text>
+                                )}
+                            </View>
+                        )}
                     </View>
                 </ScrollView>
             </View>
@@ -842,5 +933,25 @@ const styles = StyleSheet.create({
     },
     negative: {
         color: '#FF3B30',
+    },
+    saveResultsContainer: {
+        backgroundColor: '#f0f8f1',
+        borderRadius: 8,
+        padding: 12,
+        marginTop: 16,
+        borderLeftWidth: 4,
+        borderLeftColor: '#4CAF50',
+    },
+    saveResultsTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 8,
+    },
+    saveResultsText: {
+        fontSize: 13,
+        color: '#666',
+        marginBottom: 4,
+        lineHeight: 18,
     },
 });
