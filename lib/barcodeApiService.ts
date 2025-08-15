@@ -43,6 +43,7 @@ export interface CosmosApiResponse {
   category?: string | { description: string; id: number; parent_id?: number };
   unit?: string;
   image_url?: string;
+  thumbnail?: string;
   avg_price?: number;
 }
 
@@ -156,29 +157,55 @@ class BarcodeApiService {
 
       const data: CosmosApiResponse = await response.json();
       
-      console.log('📦 Dados recebidos da Cosmos API:', {
+      console.log('📦 Dados COMPLETOS recebidos da Cosmos API:', JSON.stringify(data, null, 2));
+      
+      // Extrair brand corretamente
+      let brandName = undefined;
+      if (data.brand) {
+        if (typeof data.brand === 'string') {
+          brandName = data.brand;
+        } else if (data.brand.name) {
+          brandName = data.brand.name;
+        }
+      }
+      
+      // Extrair category corretamente
+      let categoryName = undefined;
+      if (data.category) {
+        if (typeof data.category === 'string') {
+          categoryName = data.category;
+        } else if (data.category.description) {
+          categoryName = data.category.description;
+        }
+      }
+      
+      console.log('📦 Dados processados:', {
         gtin: data.gtin,
         description: data.description,
-        brand: data.brand,
-        category: data.category,
-        categoryType: typeof data.category,
+        brandName,
+        categoryName,
+        image_url: data.image_url,
+        ncm: data.ncm,
       });
       
-      return {
-        barcode: data.gtin,
-        name: data.description,
-        brand: typeof data.brand === 'string' ? data.brand : data.brand?.name,
-        category: this.mapCosmosCategory(data.category),
-        image: data.image_url,
-        source: 'cosmos',
+      const productInfo = {
+        barcode: data.gtin.toString(),
+        name: data.description || 'Produto sem nome',
+        brand: brandName || undefined,
+        category: this.mapCosmosCategory(categoryName),
+        image: data.image_url || data.thumbnail || undefined,
+        source: 'cosmos' as const,
         confidence: 0.9,
         metadata: {
           ncm: data.ncm,
-          gtin: data.gtin,
-          weight: this.extractWeight(data.description),
-          volume: this.extractVolume(data.description),
+          gtin: data.gtin.toString(),
+          weight: this.extractWeight(data.description || ''),
+          volume: this.extractVolume(data.description || ''),
         }
       };
+      
+      console.log('✅ Produto processado da Cosmos:', productInfo);
+      return productInfo;
     } catch (error) {
       console.error('❌ Erro na API Cosmos:', error);
       return null;
@@ -300,10 +327,25 @@ class BarcodeApiService {
    * Mapeia categorias da API Cosmos para categorias do app
    */
   private mapCosmosCategory(category: string | { description: string; id: number; parent_id?: number } | undefined): string {
-    if (!category) return 'Outros';
+    console.log('🏷️ Mapeando categoria:', category, 'Tipo:', typeof category);
+    
+    if (!category) {
+      console.log('🏷️ Categoria vazia, retornando "Outros"');
+      return 'Outros';
+    }
     
     // Se category é um objeto, usar a description
-    const categoryText = typeof category === 'string' ? category : category.description;
+    let categoryText = '';
+    if (typeof category === 'string') {
+      categoryText = category;
+    } else if (category && typeof category === 'object' && category.description) {
+      categoryText = category.description;
+    } else {
+      console.log('🏷️ Categoria em formato desconhecido, retornando "Outros"');
+      return 'Outros';
+    }
+    
+    console.log('🏷️ Texto da categoria extraído:', categoryText);
     
     const categoryMap: Record<string, string> = {
       'ALIMENTOS E BEBIDAS': 'Mercearia',
@@ -317,9 +359,14 @@ class BarcodeApiService {
       'BALAS E PIRULITOS': 'Mercearia',
       'DOCES E SOBREMESAS': 'Mercearia',
       'CHOCOLATES': 'Mercearia',
+      'AMENDOIM': 'Mercearia',
+      'SNACKS': 'Mercearia',
     };
     
-    return categoryMap[categoryText.toUpperCase()] || 'Mercearia';
+    const mappedCategory = categoryMap[categoryText.toUpperCase()] || 'Mercearia';
+    console.log('🏷️ Categoria mapeada:', mappedCategory);
+    
+    return mappedCategory;
   }
 
   /**

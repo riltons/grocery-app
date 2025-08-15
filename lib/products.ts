@@ -420,6 +420,10 @@ export const ProductService = {
    */
   updateSpecificProduct: async (id: string, updates: Partial<SpecificProduct>) => {
     try {
+      console.log('🔄 ProductService.updateSpecificProduct - Iniciando atualização');
+      console.log('🔄 ID do produto:', id);
+      console.log('🔄 Dados para atualização:', updates);
+
       const { data, error } = await supabase
         .from('specific_products')
         .update(updates)
@@ -436,10 +440,17 @@ export const ProductService = {
         `)
         .single();
 
-      if (error) throw error;
+      console.log('🔄 Resultado da query Supabase:', { data, error });
+
+      if (error) {
+        console.error('❌ Erro na query Supabase:', error);
+        throw error;
+      }
+      
+      console.log('✅ Produto atualizado com sucesso:', data);
       return { data, error: null };
     } catch (error) {
-      console.error('Erro ao atualizar produto específico:', error);
+      console.error('❌ Erro ao atualizar produto específico:', error);
       return { data: null, error };
     }
   },

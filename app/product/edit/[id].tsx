@@ -172,20 +172,28 @@ export default function EditProduct() {
         return;
       }
 
-      console.log('✅ Aplicando automaticamente:', productInfo);
+      console.log('✅ Informações encontradas:', productInfo);
       
-      // Aplicar informações diretamente
+      // Aplicar informações diretamente nos estados
+      console.log('📝 Aplicando nos estados do formulário...');
+      console.log('📝 Nome atual:', productName, '→ Novo:', productInfo.name);
+      console.log('📝 Marca atual:', productBrand, '→ Nova:', productInfo.brand || '');
+      console.log('📝 Descrição atual:', productDescription, '→ Nova:', productInfo.description || '');
+      console.log('📝 Imagem atual:', productImage, '→ Nova:', productInfo.image);
+      
       setProductName(productInfo.name);
       setProductBrand(productInfo.brand || '');
       setProductDescription(productInfo.description || '');
       
       if (productInfo.image) {
+        console.log('📷 Aplicando nova imagem:', productInfo.image);
         setProductImage(productInfo.image);
       }
       
-      showSuccess('Informações atualizadas', `Produto atualizado com dados da ${productInfo.source.toUpperCase()}`);
+      console.log('✅ Estados atualizados com sucesso');
+      showSuccess('Informações atualizadas', `Produto atualizado com dados da ${productInfo.source.toUpperCase()}. Clique no ✓ para salvar.`);
     } catch (error) {
-      console.error('Erro ao buscar informações do código de barras:', error);
+      console.error('❌ Erro ao buscar informações do código de barras:', error);
       showError('Erro', 'Ocorreu um erro ao consultar as APIs de código de barras');
     } finally {
       setUpdatingFromBarcode(false);
@@ -194,12 +202,22 @@ export default function EditProduct() {
 
   // Salvar alterações
   const handleSave = async () => {
+    console.log('💾 Iniciando salvamento do produto...');
+    console.log('💾 Produto atual:', product);
+    console.log('💾 Nome:', productName);
+    console.log('💾 Marca:', productBrand);
+    console.log('💾 Descrição:', productDescription);
+    console.log('💾 Imagem:', productImage);
+    console.log('💾 Produto genérico:', selectedGenericProduct);
+    
     if (!product || !productName.trim()) {
+      console.log('❌ Nome do produto é obrigatório');
       showError('Erro', 'O nome do produto é obrigatório');
       return;
     }
 
     if (!selectedGenericProduct) {
+      console.log('❌ Produto genérico é obrigatório');
       showError('Erro', 'É necessário selecionar um produto genérico');
       return;
     }
@@ -215,18 +233,25 @@ export default function EditProduct() {
         generic_product_id: selectedGenericProduct.id,
       };
 
-      const { error } = await ProductService.updateSpecificProduct(product.id, updates);
+      console.log('💾 Dados para atualização:', updates);
+      console.log('💾 ID do produto:', product.id);
+
+      const { data, error } = await ProductService.updateSpecificProduct(product.id, updates);
+
+      console.log('💾 Resultado da atualização:', { data, error });
 
       if (error) {
-        showError('Erro', 'Não foi possível salvar as alterações');
+        console.error('❌ Erro ao salvar:', error);
+        showError('Erro', `Não foi possível salvar as alterações: ${error.message || error}`);
         return;
       }
 
+      console.log('✅ Produto salvo com sucesso:', data);
       showSuccess('Produto atualizado', 'As alterações foram salvas com sucesso');
       router.back();
     } catch (error) {
-      console.error('Erro ao salvar produto:', error);
-      showError('Erro', 'Ocorreu um erro ao salvar as alterações');
+      console.error('❌ Erro ao salvar produto:', error);
+      showError('Erro', `Ocorreu um erro ao salvar as alterações: ${error.message || error}`);
     } finally {
       setSaving(false);
     }
