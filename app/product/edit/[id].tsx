@@ -114,6 +114,7 @@ export default function EditProduct() {
 
     try {
       setUpdatingFromBarcode(true);
+      console.log('🔍 Iniciando busca para código:', product.barcode);
       
       const productInfo = await barcodeApiService.getProductInfo(product.barcode);
       
@@ -122,6 +123,7 @@ export default function EditProduct() {
         return;
       }
 
+      console.log('✅ Informações encontradas:', productInfo);
       setApiProductInfo(productInfo);
       setBarcodeUpdateModal(true);
     } catch (error) {
@@ -136,6 +138,8 @@ export default function EditProduct() {
   const handleApplyApiInfo = () => {
     if (!apiProductInfo) return;
 
+    console.log('📝 Aplicando informações da API:', apiProductInfo);
+    
     setProductName(apiProductInfo.name);
     setProductBrand(apiProductInfo.brand || '');
     setProductDescription(apiProductInfo.description || '');
@@ -148,6 +152,44 @@ export default function EditProduct() {
     setApiProductInfo(null);
     
     showSuccess('Informações atualizadas', 'As informações do produto foram atualizadas com base na API');
+  };
+
+  // Aplicar informações automaticamente (sem modal)
+  const handleAutoApplyApiInfo = async () => {
+    if (!product?.barcode) {
+      showError('Erro', 'Este produto não possui código de barras');
+      return;
+    }
+
+    try {
+      setUpdatingFromBarcode(true);
+      console.log('🔍 Busca automática para código:', product.barcode);
+      
+      const productInfo = await barcodeApiService.getProductInfo(product.barcode);
+      
+      if (!productInfo) {
+        showError('Produto não encontrado', 'Não foi possível encontrar informações para este código de barras nas APIs disponíveis');
+        return;
+      }
+
+      console.log('✅ Aplicando automaticamente:', productInfo);
+      
+      // Aplicar informações diretamente
+      setProductName(productInfo.name);
+      setProductBrand(productInfo.brand || '');
+      setProductDescription(productInfo.description || '');
+      
+      if (productInfo.image) {
+        setProductImage(productInfo.image);
+      }
+      
+      showSuccess('Informações atualizadas', `Produto atualizado com dados da ${productInfo.source.toUpperCase()}`);
+    } catch (error) {
+      console.error('Erro ao buscar informações do código de barras:', error);
+      showError('Erro', 'Ocorreu um erro ao consultar as APIs de código de barras');
+    } finally {
+      setUpdatingFromBarcode(false);
+    }
   };
 
   // Salvar alterações
@@ -314,20 +356,37 @@ export default function EditProduct() {
               Consulte APIs de produtos para atualizar automaticamente as informações
             </Text>
             
-            <TouchableOpacity 
-              style={[styles.updateButton, updatingFromBarcode && styles.buttonDisabled]}
-              onPress={handleUpdateFromBarcode}
-              disabled={updatingFromBarcode}
-            >
-              {updatingFromBarcode ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="refresh" size={20} color="#fff" />
-              )}
-              <Text style={styles.updateButtonText}>
-                {updatingFromBarcode ? 'Consultando APIs...' : 'Atualizar Informações'}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.buttonRow}>
+              <TouchableOpacity 
+                style={[styles.updateButton, styles.updateButtonSecondary, updatingFromBarcode && styles.buttonDisabled]}
+                onPress={handleUpdateFromBarcode}
+                disabled={updatingFromBarcode}
+              >
+                {updatingFromBarcode ? (
+                  <ActivityIndicator size="small" color="#2196F3" />
+                ) : (
+                  <Ionicons name="eye-outline" size={20} color="#2196F3" />
+                )}
+                <Text style={styles.updateButtonSecondaryText}>
+                  Ver Informações
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.updateButton, updatingFromBarcode && styles.buttonDisabled]}
+                onPress={handleAutoApplyApiInfo}
+                disabled={updatingFromBarcode}
+              >
+                {updatingFromBarcode ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="download-outline" size={20} color="#fff" />
+                )}
+                <Text style={styles.updateButtonText}>
+                  Aplicar Automaticamente
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -586,6 +645,10 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 16,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   updateButton: {
     backgroundColor: '#2196F3',
     flexDirection: 'row',
@@ -593,9 +656,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 12,
     borderRadius: 8,
+    flex: 1,
+  },
+  updateButtonSecondary: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#2196F3',
   },
   updateButtonText: {
     color: '#fff',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  updateButtonSecondaryText: {
+    color: '#2196F3',
     fontWeight: '600',
     marginLeft: 8,
   },

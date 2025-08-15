@@ -38,10 +38,10 @@ export interface NutritionalInfo {
 export interface CosmosApiResponse {
   gtin: string;
   description: string;
-  brand: string;
-  ncm: string;
-  category: string;
-  unit: string;
+  brand: string | { name: string; picture?: string };
+  ncm?: string;
+  category?: string | { description: string; id: number; parent_id?: number };
+  unit?: string;
   image_url?: string;
   avg_price?: number;
 }
@@ -156,10 +156,18 @@ class BarcodeApiService {
 
       const data: CosmosApiResponse = await response.json();
       
+      console.log('📦 Dados recebidos da Cosmos API:', {
+        gtin: data.gtin,
+        description: data.description,
+        brand: data.brand,
+        category: data.category,
+        categoryType: typeof data.category,
+      });
+      
       return {
         barcode: data.gtin,
         name: data.description,
-        brand: data.brand,
+        brand: typeof data.brand === 'string' ? data.brand : data.brand?.name,
         category: this.mapCosmosCategory(data.category),
         image: data.image_url,
         source: 'cosmos',
@@ -291,8 +299,11 @@ class BarcodeApiService {
   /**
    * Mapeia categorias da API Cosmos para categorias do app
    */
-  private mapCosmosCategory(category: string | undefined): string {
+  private mapCosmosCategory(category: string | { description: string; id: number; parent_id?: number } | undefined): string {
     if (!category) return 'Outros';
+    
+    // Se category é um objeto, usar a description
+    const categoryText = typeof category === 'string' ? category : category.description;
     
     const categoryMap: Record<string, string> = {
       'ALIMENTOS E BEBIDAS': 'Mercearia',
@@ -303,9 +314,12 @@ class BarcodeApiService {
       'LIMPEZA': 'Limpeza',
       'HIGIENE PESSOAL': 'Higiene',
       'CASA E JARDIM': 'Casa',
+      'BALAS E PIRULITOS': 'Mercearia',
+      'DOCES E SOBREMESAS': 'Mercearia',
+      'CHOCOLATES': 'Mercearia',
     };
     
-    return categoryMap[category.toUpperCase()] || 'Outros';
+    return categoryMap[categoryText.toUpperCase()] || 'Mercearia';
   }
 
   /**
