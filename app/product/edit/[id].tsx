@@ -105,6 +105,18 @@ export default function EditProduct() {
     fetchProduct();
   }, [id]);
 
+  // Busca automática quando produto é carregado e tem código de barras
+  useEffect(() => {
+    if (product?.barcode && !updatingFromBarcode && !loading) {
+      // Só fazer busca se o produto ainda não foi atualizado com dados da API
+      const hasApiData = product.brand || (product.image_url && product.image_url.includes('http'));
+      if (!hasApiData) {
+        console.log('🔍 Produto carregado com código de barras, iniciando busca automática:', product.barcode);
+        handleAutoApplyApiInfo();
+      }
+    }
+  }, [product?.barcode, loading]);
+
   // Atualizar informações via API de código de barras
   const handleUpdateFromBarcode = async () => {
     if (!product?.barcode) {

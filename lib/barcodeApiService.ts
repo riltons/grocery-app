@@ -89,27 +89,45 @@ class BarcodeApiService {
   private readonly COSMOS_API_KEY = process.env.EXPO_PUBLIC_COSMOS_API_KEY;
   private readonly UPCITEMDB_API_KEY = process.env.EXPO_PUBLIC_UPCITEMDB_API_KEY;
   
+  // Cache para evitar requisições repetidas
+  private cache = new Map<string, ProductApiInfo>();
+  private cacheExpiry = new Map<string, number>();
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+  
+  // Rate limiting
+  private lastCosmosRequest = 0;
+  private readonly COSMOS_MIN_INTERVAL = 1000; // 1 segundo entre requisições
+  
   /**
    * Busca informações do produto em múltiplas APIs
    */
   async getProductInfo(barcode: string): Promise<ProductApiInfo | null> {
     console.log('🔍 Buscando informações do produto:', barcode);
     
+    // Verificar cache primeiro
+    const cached = this.getFromCache(barcode);
+    if (cached) {
+      console.log('💾 Produto encontrado no cache');
+      return cached;
+    }
+    
     try {
-      // 1. Tentar API Cosmos primeiro (produtos brasileiros)
+      // 1. Tentar Open Food Facts primeiro (gratuita, sem rate limit)
+      const openFoodResult = await this.searchOpenFoodFacts(barcode);
+      if (openFoodResult) {
+        console.log('✅ Produto encontrado no Open Food Facts');
+        this.saveToCache(barcode, openFoodResult);
+        return openFoodResult;
+      }
+
+      // 2. Tentar API Cosmos (com rate limiting)
       if (this.COSMOS_API_KEY) {
         const cosmosResult = await this.searchCosmos(barcode);
         if (cosmosResult) {
           console.log('✅ Produto encontrado na API Cosmos');
+          this.saveToCache(barcode, cosmosResult);
           return cosmosResult;
         }
-      }
-
-      // 2. Tentar Open Food Facts (gratuita, boa cobertura internacional)
-      const openFoodResult = await this.searchOpenFoodFacts(barcode);
-      if (openFoodResult) {
-        console.log('✅ Produto encontrado no Open Food Facts');
-        return openFoodResult;
       }
 
       // 3. Tentar UPCItemDB como fallback
@@ -117,6 +135,7 @@ class BarcodeApiService {
         const upcResult = await this.searchUPCItemDB(barcode);
         if (upcResult) {
           console.log('✅ Produto encontrado no UPCItemDB');
+          this.saveToCache(barcode, upcResult);
           return upcResult;
         }
       }
@@ -134,7 +153,17 @@ class BarcodeApiService {
    */
   private async searchCosmos(barcode: string): Promise<ProductApiInfo | null> {
     try {
+      // Rate limiting - aguardar intervalo mínimo entre requisições
+      const now = Date.now();
+      const timeSinceLastRequest = now - this.lastCosmosRequest;
+      if (timeSinceLastRequest < this.COSMOS_MIN_INTERVAL) {
+        const waitTime = this.COSMOS_MIN_INTERVAL - timeSinceLastRequest;
+        console.log(`⏳ Aguardando ${waitTime}ms para respeitar rate limit da Cosmos...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      
       console.log('🔍 Consultando API Cosmos...');
+      this.lastCosmosRequest = Date.now();
       
       const response = await fetch(
         `https://api.cosmos.bluesoft.com.br/gtins/${barcode}`,
@@ -152,7 +181,11 @@ class BarcodeApiService {
           console.log('📦 Produto não encontrado na API Cosmos');
           return null;
         }
-        throw new Error(`Cosmos API error: ${response.status}`);
+        if (response.status === 429) {
+          console.log('⚠️ Rate limit atingido na API Cosmos - pulando para próxima API');
+          return null;
+        }
+        throw new Error(`Cosmos API error: ${response.status} - ${response.statusText}`);
       }
 
       const data: CosmosApiResponse = await response.json();
@@ -225,11 +258,17 @@ class BarcodeApiService {
           headers: {
             'User-Agent': 'GroceryApp/1.0',
           },
+          timeout: 10000, // 10 segundos de timeout
         }
       );
 
       if (!response.ok) {
-        throw new Error(`OpenFoodFacts API error: ${response.status}`);
+        if (response.status === 404) {
+          console.log('📦 Produto não encontrado no Open Food Facts');
+          return null;
+        }
+        console.log(`⚠️ Erro ${response.status} no Open Food Facts: ${response.statusText}`);
+        return null;
       }
 
       const data: OpenFoodFactsResponse = await response.json();
@@ -456,6 +495,37 @@ class BarcodeApiService {
     }
     
     return clean;
+  }
+
+  /**
+   * Salva resultado no cache
+   */
+  private saveToCache(barcode: string, productInfo: ProductApiInfo): void {
+    this.cache.set(barcode, productInfo);
+    this.cacheExpiry.set(barcode, Date.now() + this.CACHE_DURATION);
+  }
+
+  /**
+   * Recupera resultado do cache se ainda válido
+   */
+  private getFromCache(barcode: string): ProductApiInfo | null {
+    const expiry = this.cacheExpiry.get(barcode);
+    if (!expiry || Date.now() > expiry) {
+      // Cache expirado, remover
+      this.cache.delete(barcode);
+      this.cacheExpiry.delete(barcode);
+      return null;
+    }
+    
+    return this.cache.get(barcode) || null;
+  }
+
+  /**
+   * Limpa o cache
+   */
+  clearCache(): void {
+    this.cache.clear();
+    this.cacheExpiry.clear();
   }
 }
 
