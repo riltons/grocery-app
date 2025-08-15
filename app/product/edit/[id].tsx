@@ -1,32 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  TextInput,
+  Image,
+  Modal,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { ProductService, getCategoryNameById } from '../../../lib/products';
-import { CategoryService, Category } from '../../../lib/categories';
-import SafeContainer from '../../../components/SafeContainer';
+import * as ImagePicker from 'expo-image-picker';
+
+import { ProductService } from '../../../lib/products';
+import { barcodeApiService, ProductApiInfo } from '../../../lib/barcodeApiService';
 import { useToast } from '../../../context/ToastContext';
-import CategorySelector from '../../../components/CategorySelector';
+import SafeContainer from '../../../components/SafeContainer';
 import GenericProductSelector from '../../../components/GenericProductSelector';
-import { GenericProduct } from '../../../lib/supabase';
+import ProductImage from '../../../components/ProductImage';
 
 type Product = {
   id: string;
   name: string;
   description?: string;
-  default_unit?: string;
-  created_at: string;
-  generic_product_id: string;
+  image_url?: string;
   barcode?: string;
+  barcode_type?: string;
   brand?: string;
+  generic_product_id: string;
   generic_products?: {
-    id: string;
     name: string;
-    category_id?: string;
-    category?: {
+    category_id: string | null;
+    categories?: {
       id: string;
       name: string;
+      icon: string;
+      color?: string;
     };
   };
 };
@@ -36,26 +49,26 @@ export default function EditProduct() {
   const router = useRouter();
   const { showSuccess, showError } = useToast();
   
-  // Estados para gerenciar os dados
+  // Estados do produto
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
   // Estados do formulário
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [defaultUnit, setDefaultUnit] = useState('');
-  const [brand, setBrand] = useState('');
-  const [barcode, setBarcode] = useState('');
+  const [productName, setProductName] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+  const [productBrand, setProductBrand] = useState('');
+  const [productImage, setProductImage] = useState<string | undefined>(undefined);
+  const [selectedGenericProduct, setSelectedGenericProduct] = useState<any>(null);
   
-  // Estados para seletores
-  const [selectedGenericProduct, setSelectedGenericProduct] = useState<GenericProduct | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [showGenericProductSelector, setShowGenericProductSelector] = useState(false);
+  // Estados dos modais
+  const [showGenericProductModal, setShowGenericProductModal] = useState(false);
+  const [showBarcodeUpdateModal, setBarcodeUpdateModal] = useState(false);
   
-  // Estado para determinar se é produto específico ou genérico
-  const [isSpecificProduct, setIsSpecificProduct] = useState(true);
-  
+  // Estados da API de código de barras
+  const [updatingFromBarcode, setUpdatingFromBarcode] = useState(false);
+  const [apiProductInfo, setApiProductInfo] = useState<ProductApiInfo | null>(null);
+
   // Carregar dados do produto
   useEffect(() => {
     if (!id) return;
@@ -67,48 +80,22 @@ export default function EditProduct() {
         const { data, error } = await ProductService.getSpecificProductById(id);
         
         if (error) {
-          console.error('Erro ao buscar produto:', error);
-          Alert.alert('Erro', 'Não foi possível carregar o produto');
+          showError('Erro', 'Não foi possível carregar o produto');
           router.back();
           return;
         }
         
         if (data) {
           setProduct(data);
-          setName(data.name);
-          setDescription(data.description || '');
-          setDefaultUnit(data.default_unit || '');
-          setBrand(data.brand || '');
-          setBarcode(data.barcode || '');
-          
-          // Determinar se é produto específico (tem generic_product_id) ou genérico
-          setIsSpecificProduct(!!data.generic_product_id);
-          
-          // Se for produto específico, carregar o produto genérico vinculado
-          if (data.generic_product_id && data.generic_products) {
-            setSelectedGenericProduct({
-              id: data.generic_products.id,
-              name: data.generic_products.name,
-              category_id: data.generic_products.category_id,
-              user_id: '', // Será preenchido se necessário
-              created_at: ''
-            });
-            
-            // Se o produto genérico tem categoria, definir como selecionada
-            if (data.generic_products.category) {
-              setSelectedCategory({
-                id: data.generic_products.category.id,
-                name: data.generic_products.category.name,
-                user_id: '',
-                created_at: '',
-                icon: ''
-              });
-            }
-          }
+          setProductName(data.name);
+          setProductDescription(data.description || '');
+          setProductBrand(data.brand || '');
+          setProductImage(data.image_url);
+          setSelectedGenericProduct(data.generic_products);
         }
       } catch (error) {
-        console.error('Erro ao buscar produto:', error);
-        Alert.alert('Erro', 'Não foi possível carregar o produto');
+        console.error('Erro ao carregar produto:', error);
+        showError('Erro', 'Ocorreu um erro ao carregar o produto');
         router.back();
       } finally {
         setLoading(false);
@@ -117,180 +104,157 @@ export default function EditProduct() {
     
     fetchProduct();
   }, [id]);
-  
-  // Funções para os seletores
-  const handleGenericProductSelect = (genericProduct: GenericProduct) => {
-    setSelectedGenericProduct(genericProduct);
-    setShowGenericProductSelector(false);
-    
-    // Se o produto genérico tem categoria, atualizar a categoria selecionada
-    if (genericProduct.category_id) {
-      // Buscar dados da categoria
-      CategoryService.getCategories().then(({ data }) => {
-        if (data) {
-          const category = data.find(c => c.id === genericProduct.category_id);
-          if (category) {
-            setSelectedCategory(category);
-          }
-        }
-      });
-    } else {
-      setSelectedCategory(null);
-    }
-  };
-  
-  const handleCategorySelect = async (categoryId: string) => {
-    // Buscar dados completos da categoria
-    try {
-      const { data: categories } = await CategoryService.getCategories();
-      if (categories) {
-        const category = categories.find(c => c.id === categoryId);
-        if (category) {
-          setSelectedCategory(category);
-          
-          // Se há um produto genérico selecionado, atualizar sua categoria
-          if (selectedGenericProduct) {
-            const { error } = await ProductService.updateGenericProduct(selectedGenericProduct.id, {
-              category_id: categoryId
-            });
-            
-            if (error) {
-              console.error('Erro ao atualizar categoria do produto genérico:', error);
-              showError('Erro ao atualizar categoria');
-            } else {
-              // Atualizar o produto genérico local
-              setSelectedGenericProduct(prev => prev ? { ...prev, category_id: categoryId } : null);
-              showSuccess('Categoria atualizada com sucesso!');
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Erro ao buscar categoria:', error);
-      showError('Erro ao buscar categoria');
-    }
-  };
-  
-  // Validar formulário
-  const isFormValid = name.trim().length > 0 && (isSpecificProduct ? selectedGenericProduct : true);
-  
-  // Salvar alterações
-  const handleSave = async () => {
-    if (!isFormValid || !product) {
-      Alert.alert('Erro', 'Nome do produto é obrigatório');
+
+  // Atualizar informações via API de código de barras
+  const handleUpdateFromBarcode = async () => {
+    if (!product?.barcode) {
+      showError('Erro', 'Este produto não possui código de barras');
       return;
     }
+
+    try {
+      setUpdatingFromBarcode(true);
+      
+      const productInfo = await barcodeApiService.getProductInfo(product.barcode);
+      
+      if (!productInfo) {
+        showError('Produto não encontrado', 'Não foi possível encontrar informações para este código de barras nas APIs disponíveis');
+        return;
+      }
+
+      setApiProductInfo(productInfo);
+      setBarcodeUpdateModal(true);
+    } catch (error) {
+      console.error('Erro ao buscar informações do código de barras:', error);
+      showError('Erro', 'Ocorreu um erro ao consultar as APIs de código de barras');
+    } finally {
+      setUpdatingFromBarcode(false);
+    }
+  };
+
+  // Aplicar informações da API
+  const handleApplyApiInfo = () => {
+    if (!apiProductInfo) return;
+
+    setProductName(apiProductInfo.name);
+    setProductBrand(apiProductInfo.brand || '');
+    setProductDescription(apiProductInfo.description || '');
     
+    if (apiProductInfo.image) {
+      setProductImage(apiProductInfo.image);
+    }
+
+    setBarcodeUpdateModal(false);
+    setApiProductInfo(null);
+    
+    showSuccess('Informações atualizadas', 'As informações do produto foram atualizadas com base na API');
+  };
+
+  // Salvar alterações
+  const handleSave = async () => {
+    if (!product || !productName.trim()) {
+      showError('Erro', 'O nome do produto é obrigatório');
+      return;
+    }
+
+    if (!selectedGenericProduct) {
+      showError('Erro', 'É necessário selecionar um produto genérico');
+      return;
+    }
+
     try {
       setSaving(true);
       
-      // Verificar se o nome mudou e se já existe outro produto com o novo nome
-      const newName = name.trim();
-      const oldName = product.name.trim();
-      
-      if (newName.toLowerCase() !== oldName.toLowerCase()) {
-        const { exists, error: checkError } = await ProductService.checkProductExists(newName);
-        
-        if (checkError) {
-          console.error('Erro ao verificar produto:', checkError);
-          Alert.alert('Erro', 'Não foi possível verificar se o produto já existe');
-          return;
-        }
-        
-        if (exists) {
-          Alert.alert(
-            'Produto já existe', 
-            `Já existe um produto com o nome "${newName}". Por favor, escolha um nome diferente.`
-          );
-          return;
-        }
-      }
-      
-      const updates: any = {
-        name: newName,
-        description: description.trim() || undefined,
-        default_unit: defaultUnit.trim() || undefined,
+      const updates = {
+        name: productName.trim(),
+        description: productDescription.trim() || null,
+        brand: productBrand.trim() || null,
+        image_url: productImage || null,
+        generic_product_id: selectedGenericProduct.id,
       };
-      
-      // Adicionar campos específicos se for produto específico
-      if (isSpecificProduct) {
-        updates.brand = brand.trim() || undefined;
-        updates.barcode = barcode.trim() || undefined;
-        
-        // Atualizar produto genérico vinculado se mudou
-        if (selectedGenericProduct && selectedGenericProduct.id !== product.generic_product_id) {
-          updates.generic_product_id = selectedGenericProduct.id;
-        }
-      }
-      
+
       const { error } = await ProductService.updateSpecificProduct(product.id, updates);
-      
+
       if (error) {
-        console.error('Erro ao atualizar produto:', error);
-        Alert.alert('Erro', 'Não foi possível atualizar o produto');
+        showError('Erro', 'Não foi possível salvar as alterações');
         return;
       }
-      
-      showSuccess('Produto atualizado com sucesso!');
-      // Aguardar um pouco para o usuário ver o toast, depois voltar
-      setTimeout(() => {
-        router.back();
-      }, 1500);
+
+      showSuccess('Produto atualizado', 'As alterações foram salvas com sucesso');
+      router.back();
     } catch (error) {
-      console.error('Erro ao atualizar produto:', error);
-      Alert.alert('Erro', 'Não foi possível atualizar o produto');
+      console.error('Erro ao salvar produto:', error);
+      showError('Erro', 'Ocorreu um erro ao salvar as alterações');
     } finally {
       setSaving(false);
     }
   };
-  
-  // Excluir produto
-  const handleDelete = () => {
+
+  // Selecionar imagem
+  const handleSelectImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Precisamos de permissão para acessar suas fotos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setProductImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar imagem:', error);
+      showError('Erro', 'Não foi possível selecionar a imagem');
+    }
+  };
+
+  // Tirar foto
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', 'Precisamos de permissão para usar a câmera.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setProductImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      showError('Erro', 'Não foi possível tirar a foto');
+    }
+  };
+
+  // Opções de imagem
+  const handleImageOptions = () => {
     Alert.alert(
-      'Confirmar Exclusão',
-      `Tem certeza que deseja excluir o produto "${product?.name}"?\n\nEsta ação não pode ser desfeita e removerá também todo o histórico de preços.`,
+      'Imagem do Produto',
+      'Escolha uma opção:',
       [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: confirmDelete,
-        },
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Galeria', onPress: handleSelectImage },
+        { text: 'Câmera', onPress: handleTakePhoto },
+        ...(productImage ? [{ text: 'Remover', onPress: () => setProductImage(undefined), style: 'destructive' as const }] : [])
       ]
     );
   };
-  
-  // Confirmar exclusão
-  const confirmDelete = async () => {
-    if (!product) return;
-    
-    try {
-      setSaving(true);
-      
-      const { error } = await ProductService.deleteSpecificProduct(product.id);
-      
-      if (error) {
-        console.error('Erro ao excluir produto:', error);
-        Alert.alert('Erro', 'Não foi possível excluir o produto');
-        return;
-      }
-      
-      showSuccess('Produto excluído com sucesso!');
-      // Aguardar um pouco para o usuário ver o toast, depois navegar
-      setTimeout(() => {
-        router.replace('/product');
-      }, 1500);
-    } catch (error) {
-      console.error('Erro ao excluir produto:', error);
-      Alert.alert('Erro', 'Não foi possível excluir o produto');
-    } finally {
-      setSaving(false);
-    }
-  };
-  
+
   if (loading) {
     return (
       <SafeContainer style={styles.container}>
@@ -301,7 +265,7 @@ export default function EditProduct() {
       </SafeContainer>
     );
   }
-  
+
   if (!product) {
     return (
       <SafeContainer style={styles.container}>
@@ -315,142 +279,229 @@ export default function EditProduct() {
       </SafeContainer>
     );
   }
-  
+
   return (
     <SafeContainer style={styles.container}>
       <StatusBar style="dark" />
       
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         
         <Text style={styles.headerTitle}>Editar Produto</Text>
         
         <TouchableOpacity 
-          style={styles.deleteButton} 
-          onPress={handleDelete}
+          style={[styles.headerButton, saving && styles.buttonDisabled]} 
+          onPress={handleSave}
           disabled={saving}
         >
-          <Ionicons name="trash-outline" size={24} color="#ff6b6b" />
+          {saving ? (
+            <ActivityIndicator size="small" color="#4CAF50" />
+          ) : (
+            <Ionicons name="checkmark" size={24} color="#4CAF50" />
+          )}
         </TouchableOpacity>
       </View>
-      
+
       <ScrollView style={styles.content}>
-        <View style={styles.form}>
-          {/* Badge indicando tipo do produto */}
-          <View style={styles.typeBadgeContainer}>
-            <View style={[styles.typeBadge, isSpecificProduct ? styles.specificBadge : styles.genericBadge]}>
-              <Text style={styles.typeBadgeText}>
-                {isSpecificProduct ? 'Produto Específico' : 'Produto Genérico'}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Nome do Produto *</Text>
-            <TextInput
-              style={styles.textInput}
-              value={name}
-              onChangeText={setName}
-              placeholder="Digite o nome do produto"
-              autoFocus
-            />
-          </View>
-          
-          {/* Campos específicos para produtos específicos */}
-          {isSpecificProduct && (
-            <>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Marca</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={brand}
-                  onChangeText={setBrand}
-                  placeholder="Digite a marca (opcional)"
-                />
-              </View>
-              
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Código de Barras</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={barcode}
-                  onChangeText={setBarcode}
-                  placeholder="Digite o código de barras (opcional)"
-                  keyboardType="numeric"
-                />
-              </View>
-              
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Produto Genérico Vinculado *</Text>
-                <TouchableOpacity 
-                  style={styles.selectorButton}
-                  onPress={() => setShowGenericProductSelector(true)}
-                >
-                  <Text style={[styles.selectorButtonText, !selectedGenericProduct && styles.placeholderText]}>
-                    {selectedGenericProduct ? selectedGenericProduct.name : 'Selecionar produto genérico'}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={20} color="#666" />
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-          
-          {/* Seletor de categoria (para produtos genéricos ou para atualizar categoria do produto genérico vinculado) */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>
-              Categoria {isSpecificProduct ? '(do produto genérico)' : ''}
+        {/* Seção de atualização via código de barras */}
+        {product.barcode && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Atualizar via Código de Barras</Text>
+            <Text style={styles.sectionDescription}>
+              Consulte APIs de produtos para atualizar automaticamente as informações
             </Text>
-            <CategorySelector
-              selectedCategory={selectedCategory?.id || null}
-              onSelectCategory={handleCategorySelect}
-            />
+            
+            <TouchableOpacity 
+              style={[styles.updateButton, updatingFromBarcode && styles.buttonDisabled]}
+              onPress={handleUpdateFromBarcode}
+              disabled={updatingFromBarcode}
+            >
+              {updatingFromBarcode ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="refresh" size={20} color="#fff" />
+              )}
+              <Text style={styles.updateButtonText}>
+                {updatingFromBarcode ? 'Consultando APIs...' : 'Atualizar Informações'}
+              </Text>
+            </TouchableOpacity>
           </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Descrição</Text>
-            <TextInput
-              style={[styles.textInput, styles.textArea]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Digite uma descrição (opcional)"
-              multiline
-              numberOfLines={3}
-            />
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Unidade Padrão</Text>
-            <TextInput
-              style={styles.textInput}
-              value={defaultUnit}
-              onChangeText={setDefaultUnit}
-              placeholder="Ex: un, kg, L, etc."
-            />
-          </View>
-          
-          <TouchableOpacity 
-            style={[styles.saveButton, (!isFormValid || saving) && styles.buttonDisabled]}
-            onPress={handleSave}
-            disabled={!isFormValid || saving}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color="#fff" />
+        )}
+
+        {/* Imagem do produto */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Imagem do Produto</Text>
+          <TouchableOpacity style={styles.imageContainer} onPress={handleImageOptions}>
+            {productImage ? (
+              <Image source={{ uri: productImage }} style={styles.productImage} />
             ) : (
-              <Text style={styles.saveButtonText}>Salvar Alterações</Text>
+              <View style={styles.imagePlaceholder}>
+                <Ionicons name="camera-outline" size={40} color="#999" />
+                <Text style={styles.imagePlaceholderText}>Adicionar Imagem</Text>
+              </View>
             )}
           </TouchableOpacity>
         </View>
+
+        {/* Informações básicas */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Informações Básicas</Text>
+          
+          <Text style={styles.fieldLabel}>Nome do Produto *</Text>
+          <TextInput
+            style={styles.textInput}
+            value={productName}
+            onChangeText={setProductName}
+            placeholder="Nome do produto"
+            multiline={false}
+          />
+          
+          <Text style={styles.fieldLabel}>Marca</Text>
+          <TextInput
+            style={styles.textInput}
+            value={productBrand}
+            onChangeText={setProductBrand}
+            placeholder="Marca do produto"
+            multiline={false}
+          />
+          
+          <Text style={styles.fieldLabel}>Descrição</Text>
+          <TextInput
+            style={[styles.textInput, styles.textArea]}
+            value={productDescription}
+            onChangeText={setProductDescription}
+            placeholder="Descrição do produto"
+            multiline={true}
+            numberOfLines={3}
+          />
+        </View>
+
+        {/* Produto genérico */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Produto Genérico *</Text>
+          
+          <TouchableOpacity 
+            style={styles.genericProductSelector}
+            onPress={() => setShowGenericProductModal(true)}
+          >
+            <View style={styles.genericProductInfo}>
+              <Text style={styles.genericProductName}>
+                {selectedGenericProduct?.name || 'Selecionar produto genérico'}
+              </Text>
+              {selectedGenericProduct?.categories && (
+                <Text style={styles.genericProductCategory}>
+                  {selectedGenericProduct.categories.name}
+                </Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#666" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Código de barras (apenas exibição) */}
+        {product.barcode && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Código de Barras</Text>
+            <View style={styles.barcodeInfo}>
+              <Text style={styles.barcodeText}>{product.barcode}</Text>
+              <Text style={styles.barcodeType}>{product.barcode_type || 'EAN13'}</Text>
+            </View>
+          </View>
+        )}
       </ScrollView>
-      
-      {/* Modal para seleção de produto genérico */}
+
+      {/* Modal de seleção de produto genérico */}
       <GenericProductSelector
-        visible={showGenericProductSelector}
-        onClose={() => setShowGenericProductSelector(false)}
-        onSelectProduct={handleGenericProductSelect}
-        currentListProductNames={[]} // Não precisamos filtrar nada aqui
+        visible={showGenericProductModal}
+        onClose={() => setShowGenericProductModal(false)}
+        onSelectProduct={(genericProduct) => {
+          setSelectedGenericProduct(genericProduct);
+          setShowGenericProductModal(false);
+        }}
+        searchQuery={productName}
       />
+
+      {/* Modal de atualização via API */}
+      <Modal
+        visible={showBarcodeUpdateModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setBarcodeUpdateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Informações Encontradas</Text>
+              <TouchableOpacity
+                onPress={() => setBarcodeUpdateModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {apiProductInfo && (
+              <ScrollView style={styles.modalBody}>
+                <Text style={styles.modalDescription}>
+                  Encontramos as seguintes informações na {apiProductInfo.source}:
+                </Text>
+
+                {apiProductInfo.image && (
+                  <Image source={{ uri: apiProductInfo.image }} style={styles.apiProductImage} />
+                )}
+
+                <View style={styles.apiInfoItem}>
+                  <Text style={styles.apiInfoLabel}>Nome:</Text>
+                  <Text style={styles.apiInfoValue}>{apiProductInfo.name}</Text>
+                </View>
+
+                {apiProductInfo.brand && (
+                  <View style={styles.apiInfoItem}>
+                    <Text style={styles.apiInfoLabel}>Marca:</Text>
+                    <Text style={styles.apiInfoValue}>{apiProductInfo.brand}</Text>
+                  </View>
+                )}
+
+                {apiProductInfo.description && (
+                  <View style={styles.apiInfoItem}>
+                    <Text style={styles.apiInfoLabel}>Descrição:</Text>
+                    <Text style={styles.apiInfoValue}>{apiProductInfo.description}</Text>
+                  </View>
+                )}
+
+                <View style={styles.apiInfoItem}>
+                  <Text style={styles.apiInfoLabel}>Fonte:</Text>
+                  <Text style={styles.apiInfoValue}>{apiProductInfo.source}</Text>
+                </View>
+
+                <View style={styles.apiInfoItem}>
+                  <Text style={styles.apiInfoLabel}>Confiança:</Text>
+                  <Text style={styles.apiInfoValue}>{Math.round(apiProductInfo.confidence * 100)}%</Text>
+                </View>
+              </ScrollView>
+            )}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setBarcodeUpdateModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalApplyButton}
+                onPress={handleApplyApiInfo}
+              >
+                <Text style={styles.modalApplyText}>Aplicar Informações</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeContainer>
   );
 }
@@ -497,31 +548,89 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
   },
-  backButton: {
+  headerButton: {
     padding: 8,
   },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  backButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
   backButtonText: {
-    color: '#4CAF50',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '500',
   },
-  deleteButton: {
-    padding: 8,
-  },
   content: {
     flex: 1,
-  },
-  form: {
     padding: 16,
   },
-  inputGroup: {
-    marginBottom: 20,
+  section: {
+    marginBottom: 24,
+    backgroundColor: '#f9f9f9',
+    padding: 16,
+    borderRadius: 12,
   },
-  inputLabel: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+  },
+  updateButton: {
+    backgroundColor: '#2196F3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+  },
+  updateButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  imageContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  productImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: '#f0f0f0',
+  },
+  imagePlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ddd',
+    borderStyle: 'dashed',
+  },
+  imagePlaceholderText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#999',
+  },
+  fieldLabel: {
     fontSize: 16,
     fontWeight: '500',
     color: '#333',
     marginBottom: 8,
+    marginTop: 12,
   },
   textInput: {
     borderWidth: 1,
@@ -536,60 +645,135 @@ const styles = StyleSheet.create({
     height: 80,
     textAlignVertical: 'top',
   },
-  saveButton: {
-    backgroundColor: '#4CAF50',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  buttonDisabled: {
-    backgroundColor: '#a5d6a7',
-    opacity: 0.7,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  // Estilos para o badge de tipo
-  typeBadgeContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  typeBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  specificBadge: {
-    backgroundColor: '#E8F5E8',
-  },
-  genericBadge: {
-    backgroundColor: '#E3F2FD',
-  },
-  typeBadgeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  // Estilos para os seletores
-  selectorButton: {
+  genericProductSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: '#fff',
   },
-  selectorButtonText: {
-    fontSize: 16,
-    color: '#333',
+  genericProductInfo: {
     flex: 1,
   },
-  placeholderText: {
-    color: '#999',
+  genericProductName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  genericProductCategory: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  barcodeInfo: {
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  barcodeText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    fontFamily: 'monospace',
+  },
+  barcodeType: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalDescription: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 16,
+  },
+  apiProductImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  apiInfoItem: {
+    marginBottom: 12,
+  },
+  apiInfoLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  apiInfoValue: {
+    fontSize: 16,
+    color: '#666',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#666',
+  },
+  modalApplyButton: {
+    flex: 1,
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  modalApplyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
