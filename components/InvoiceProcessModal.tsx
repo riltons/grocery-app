@@ -490,7 +490,9 @@ export default function InvoiceProcessModal({
                                     {product.brand && (
                                         <View style={styles.brandContainer}>
                                             <Ionicons name="business-outline" size={12} color="#666" />
-                                            <Text style={styles.productBrand}>{product.brand}</Text>
+                                            <Text style={styles.productBrand}>
+                                                {typeof product.brand === 'string' ? product.brand : product.brand?.name || 'Marca não informada'}
+                                            </Text>
                                         </View>
                                     )}
                                     {product.category && (
@@ -712,7 +714,9 @@ export default function InvoiceProcessModal({
                                         {product.brand && (
                                             <View style={styles.brandContainer}>
                                                 <Ionicons name="business-outline" size={12} color="#666" />
-                                                <Text style={styles.productBrand}>{product.brand}</Text>
+                                                <Text style={styles.productBrand}>
+                                                    {typeof product.brand === 'string' ? product.brand : product.brand?.name || 'Marca não informada'}
+                                                </Text>
                                             </View>
                                         )}
                                         {product.category && (

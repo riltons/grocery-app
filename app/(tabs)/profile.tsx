@@ -104,7 +104,7 @@ export default function ProfileTab() {
             <Text style={styles.userName}>
               {user?.email?.split('@')[0] || 'Usuário'}
             </Text>
-            <Text style={styles.userEmail}>{user?.email}</Text>
+            <Text style={styles.userEmail}>{user?.email || 'Email não disponível'}</Text>
           </View>
         </View>
 

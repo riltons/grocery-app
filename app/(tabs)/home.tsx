@@ -279,7 +279,7 @@ export default function HomeTab() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Minhas Listas</Text>
-          <Text style={styles.subtitle}>Olá, {user?.email?.split('@')[0]}</Text>
+          <Text style={styles.subtitle}>Olá, {user?.email?.split('@')[0] || 'Usuário'}</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
