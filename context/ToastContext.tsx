@@ -53,23 +53,37 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
   };
 
   const showSuccess = (title: string, message?: string) => {
-    showToast({ type: 'success', title, message });
+    const safeTitle = typeof title === 'string' ? title : 'Sucesso';
+    const safeMessage = typeof message === 'string' ? message : undefined;
+    showToast({ type: 'success', title: safeTitle, message: safeMessage });
   };
 
   const showError = (title: string, message?: string) => {
-    showToast({ type: 'error', title, message });
+    const safeTitle = typeof title === 'string' ? title : 'Erro';
+    const safeMessage = typeof message === 'string' ? message : undefined;
+    showToast({ type: 'error', title: safeTitle, message: safeMessage });
   };
 
   const showWarning = (title: string, message?: string) => {
-    showToast({ type: 'warning', title, message });
+    const safeTitle = typeof title === 'string' ? title : 'Aviso';
+    const safeMessage = typeof message === 'string' ? message : undefined;
+    showToast({ type: 'warning', title: safeTitle, message: safeMessage });
   };
 
   const showInfo = (title: string, message?: string) => {
-    showToast({ type: 'info', title, message });
+    const safeTitle = typeof title === 'string' ? title : 'Informação';
+    const safeMessage = typeof message === 'string' ? message : undefined;
+    showToast({ type: 'info', title: safeTitle, message: safeMessage });
   };
 
   const hideToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
+    try {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    } catch (error) {
+      console.error('Erro ao esconder toast:', error);
+      // Fallback: limpar todos os toasts
+      setToasts([]);
+    }
   };
 
   const hideAllToasts = () => {

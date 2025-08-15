@@ -248,7 +248,17 @@ export default function EditProduct() {
 
       console.log('✅ Produto salvo com sucesso:', data);
       showSuccess('Produto atualizado', 'As alterações foram salvas com sucesso');
-      router.back();
+      
+      // Aguardar um pouco antes de navegar para evitar conflito com o toast
+      setTimeout(() => {
+        try {
+          router.back();
+        } catch (error) {
+          console.error('Erro na navegação:', error);
+          // Fallback: navegar para a lista de produtos
+          router.replace('/products');
+        }
+      }, 1500);
     } catch (error) {
       console.error('❌ Erro ao salvar produto:', error);
       showError('Erro', `Ocorreu um erro ao salvar as alterações: ${error.message || error}`);

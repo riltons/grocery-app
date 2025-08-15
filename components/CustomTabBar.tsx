@@ -82,7 +82,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: TabBarP
               styles.tabLabel,
               { color: isFocused ? '#4CAF50' : '#64748b' }
             ]}>
-              {label}
+              {typeof label === 'string' ? label : route.name}
             </Text>
           </TouchableOpacity>
         );

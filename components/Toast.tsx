@@ -135,9 +135,9 @@ export default function Toast({
         </View>
         
         <View style={styles.textContainer}>
-          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.title}>{typeof title === 'string' ? title : 'Notificação'}</Text>
           {message && (
-            <Text style={styles.message}>{message}</Text>
+            <Text style={styles.message}>{typeof message === 'string' ? message : 'Mensagem não disponível'}</Text>
           )}
         </View>
 
