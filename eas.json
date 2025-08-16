@@ -6,28 +6,27 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "android": {
-        "gradleCommand": ":app:assembleDebug"
-      }
+      "distribution": "internal"
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
-      },
-      "env": {
-        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     },
     "production": {
       "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
+        "buildType": "app-bundle"
+      }
+    },
+    "simple": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
       },
       "env": {
-        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+        "EXPO_NO_CAPABILITY_SYNC": "1"
       }
     }
   },

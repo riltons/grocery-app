@@ -17,8 +17,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "99fa697e-ad65-4855-b4c5-106b3e3ee919"
-      }
+        "projectId": "8208b12c-0266-45ac-866d-a15a185e30a5"
+      },
+      "router": {}
     },
     "android": {
       "package": "com.riltongarcia.groceryapp",
@@ -32,12 +33,18 @@
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "navigationBar": {
         "visible": "leanback"
       },
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "runtimeVersion": "1.0.0"
     },
     "ios": {
       "bundleIdentifier": "com.riltongarcia.groceryapp",
@@ -45,6 +52,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Este app precisa acessar sua localização para sugerir supermercados próximos quando você adicionar uma nova loja.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Este app precisa acessar sua localização para sugerir supermercados próximos quando você adicionar uma nova loja."
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "plugins": [
@@ -58,6 +68,9 @@
           }
         }
       ]
-    ]
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/8208b12c-0266-45ac-866d-a15a185e30a5"
+    }
   }
 }
