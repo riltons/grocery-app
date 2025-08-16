@@ -412,22 +412,24 @@ export const InvoiceService = {
    */
   getOrCreateCategory: async (categoryName: string, userId: string): Promise<string | null> => {
     try {
-      // Buscar categoria por nome
+      // Buscar categoria por nome do usuário
       const { data: categories } = await supabase
         .from('categories')
         .select('*')
         .ilike('name', categoryName || 'Outros')
+        .eq('user_id', userId)
         .limit(1);
       
       if (categories && categories.length > 0) {
         return categories[0].id;
       }
       
-      // Se não encontrou categoria, buscar ou criar categoria "Outros"
+      // Se não encontrou categoria, buscar ou criar categoria "Outros" do usuário
       const { data: defaultCategories } = await supabase
         .from('categories')
         .select('*')
         .ilike('name', 'Outros')
+        .eq('user_id', userId)
         .limit(1);
       
       if (defaultCategories && defaultCategories.length > 0) {
@@ -471,20 +473,59 @@ export const InvoiceService = {
       }
 
       console.log('📄 Salvando produtos da nota fiscal no banco de dados...');
+      console.log('📄 Total de produtos na nota fiscal:', invoiceData.products.length);
       
       const savedGenericProducts: any[] = [];
       const savedSpecificProducts: any[] = [];
       const existingProducts: any[] = [];
       const skippedProducts: any[] = [];
 
-      for (const invoiceProduct of invoiceData.products) {
+      for (let i = 0; i < invoiceData.products.length; i++) {
+        const invoiceProduct = invoiceData.products[i];
+        console.log(`📄 Processando produto ${i + 1}/${invoiceData.products.length}:`, {
+          name: invoiceProduct.name,
+          barcode: invoiceProduct.barcode,
+          category: invoiceProduct.category
+        });
+        
+        // Validar dados obrigatórios do produto
+        if (!invoiceProduct.name || invoiceProduct.name.trim().length === 0) {
+          console.error(`📄 Produto ${i + 1} - ERRO: Nome do produto é obrigatório`);
+          skippedProducts.push({
+            product: invoiceProduct,
+            reason: 'Nome do produto é obrigatório',
+            error: 'Dados incompletos'
+          });
+          continue;
+        }
+        
+        if (!invoiceProduct.quantity || invoiceProduct.quantity <= 0) {
+          console.error(`📄 Produto ${i + 1} - ERRO: Quantidade inválida:`, invoiceProduct.quantity);
+          skippedProducts.push({
+            product: invoiceProduct,
+            reason: 'Quantidade inválida ou não informada',
+            error: 'Dados incompletos'
+          });
+          continue;
+        }
+        
+        if (!invoiceProduct.unitPrice || invoiceProduct.unitPrice <= 0) {
+          console.error(`📄 Produto ${i + 1} - ERRO: Preço unitário inválido:`, invoiceProduct.unitPrice);
+          skippedProducts.push({
+            product: invoiceProduct,
+            reason: 'Preço unitário inválido ou não informado',
+            error: 'Dados incompletos'
+          });
+          continue;
+        }
+        
         try {
           // Verificar se produto com código de barras já existe
           if (invoiceProduct.barcode) {
             const { data: existingSpecific } = await ProductService.getSpecificProductByBarcode(invoiceProduct.barcode);
             
             if (existingSpecific) {
-              console.log('📄 Produto específico já existe:', invoiceProduct.name);
+              console.log(`📄 Produto ${i + 1} - Específico já existe:`, invoiceProduct.name, 'Barcode:', invoiceProduct.barcode);
               existingProducts.push({
                 ...existingSpecific,
                 invoiceData: invoiceProduct
@@ -516,7 +557,7 @@ export const InvoiceService = {
               });
 
               if (genericError) {
-                console.error('Erro ao criar produto genérico:', genericError);
+                console.error(`📄 Produto ${i + 1} - ERRO ao criar genérico:`, invoiceProduct.name, genericError);
                 skippedProducts.push({
                   product: invoiceProduct,
                   reason: 'Erro ao criar produto genérico',
@@ -540,7 +581,7 @@ export const InvoiceService = {
             });
 
             if (specificError) {
-              console.error('Erro ao criar produto específico:', specificError);
+              console.error(`📄 Produto ${i + 1} - ERRO ao criar específico:`, invoiceProduct.name, specificError);
               skippedProducts.push({
                 product: invoiceProduct,
                 reason: 'Erro ao criar produto específico',
@@ -550,7 +591,7 @@ export const InvoiceService = {
             }
 
             savedSpecificProducts.push(newSpecificProduct);
-            console.log('📄 Produto específico salvo:', invoiceProduct.name);
+            console.log(`📄 Produto ${i + 1} - Específico salvo com sucesso:`, invoiceProduct.name, 'Barcode:', invoiceProduct.barcode);
 
           } else {
             // Produto sem código de barras - criar/usar apenas genérico
@@ -568,7 +609,7 @@ export const InvoiceService = {
               });
 
               if (genericError) {
-                console.error('Erro ao criar produto genérico:', genericError);
+                console.error(`📄 Produto ${i + 1} - ERRO ao criar genérico (sem barcode):`, invoiceProduct.name, genericError);
                 skippedProducts.push({
                   product: invoiceProduct,
                   reason: 'Erro ao criar produto genérico',
@@ -578,9 +619,9 @@ export const InvoiceService = {
               }
 
               savedGenericProducts.push(newGenericProduct);
-              console.log('📄 Produto genérico salvo:', invoiceProduct.name);
+              console.log(`📄 Produto ${i + 1} - Genérico salvo com sucesso:`, invoiceProduct.name);
             } else {
-              console.log('📄 Produto genérico já existe:', invoiceProduct.name);
+              console.log(`📄 Produto ${i + 1} - Genérico já existe:`, invoiceProduct.name);
               existingProducts.push({
                 ...existingGeneric,
                 invoiceData: invoiceProduct
@@ -589,7 +630,7 @@ export const InvoiceService = {
           }
 
         } catch (error) {
-          console.error('Erro ao processar produto:', invoiceProduct.name, error);
+          console.error(`📄 Produto ${i + 1} - ERRO ao processar:`, invoiceProduct.name, error);
           skippedProducts.push({
             product: invoiceProduct,
             reason: 'Erro no processamento',
