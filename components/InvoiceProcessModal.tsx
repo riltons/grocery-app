@@ -134,7 +134,7 @@ export default function InvoiceProcessModal({
     const processInvoiceFromUrl = async (url: string) => {
         try {
             // Download do XML
-            const { data: xmlContent, error: downloadError } = await InvoiceService.downloadInvoiceXML(url);
+            const { data: xmlContent, error: downloadError } = await InvoiceService.downloadInvoiceXML(url, url);
 
             if (downloadError || !xmlContent) {
                 console.log('📄 Erro no download, usando dados de demonstração');
@@ -600,31 +600,31 @@ export default function InvoiceProcessModal({
                             <Text style={styles.buttonText}>Fechar sem Salvar</Text>
                         </TouchableOpacity>
                         
-                        {saveResults && (
+                        {saveResults && saveResults.products && (
                             <View style={styles.saveResultsContainer}>
                                 <Text style={styles.saveResultsTitle}>Resultados do Salvamento:</Text>
                                 
-                                {saveResults.savedGenericProducts.length > 0 && (
+                                {saveResults.products.savedGenericProducts?.length > 0 && (
                                     <Text style={styles.saveResultsText}>
-                                        ✅ {saveResults.savedGenericProducts.length} produtos genéricos salvos
+                                        ✅ {saveResults.products.savedGenericProducts.length} produtos genéricos salvos
                                     </Text>
                                 )}
                                 
-                                {saveResults.savedSpecificProducts.length > 0 && (
+                                {saveResults.products.savedSpecificProducts?.length > 0 && (
                                     <Text style={styles.saveResultsText}>
-                                        ✅ {saveResults.savedSpecificProducts.length} produtos específicos salvos
+                                        ✅ {saveResults.products.savedSpecificProducts.length} produtos específicos salvos
                                     </Text>
                                 )}
                                 
-                                {saveResults.existingProducts.length > 0 && (
+                                {saveResults.products.existingProducts?.length > 0 && (
                                     <Text style={styles.saveResultsText}>
-                                        ℹ️ {saveResults.existingProducts.length} produtos já existiam
+                                        ℹ️ {saveResults.products.existingProducts.length} produtos já existiam
                                     </Text>
                                 )}
                                 
-                                {saveResults.skippedProducts.length > 0 && (
+                                {saveResults.products.skippedProducts?.length > 0 && (
                                     <Text style={styles.saveResultsText}>
-                                        ⚠️ {saveResults.skippedProducts.length} produtos ignorados
+                                        ⚠️ {saveResults.products.skippedProducts.length} produtos ignorados
                                     </Text>
                                 )}
                             </View>
