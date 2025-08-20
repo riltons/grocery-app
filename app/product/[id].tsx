@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ProductService } from '../../lib/products';
 import { StoreService } from '../../lib/stores';
 
+import * as ImagePicker from 'expo-image-picker';
 import UnitSelector from '../../components/UnitSelector';
 import { useToast } from '../../context/ToastContext';
 import PriceHistoryModal from '../../components/PriceHistoryModal';
@@ -73,7 +74,7 @@ export default function ProductDetail() {
   const [editingProduct, setEditingProduct] = useState(false);
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
-  const [productImage, setProductImage] = useState<string | undefined>(undefined);
+  const [productImage, setProductImage] = useState<string | null>(null);
   
 
   
@@ -261,8 +262,8 @@ export default function ProductDetail() {
       
       const { error } = await ProductService.updateSpecificProduct(product.id, {
         name: productName.trim(),
-        description: productDescription.trim() || null,
-        image_url: productImage || null,
+        description: productDescription.trim() ? productDescription.trim() : undefined,
+        image_url: productImage || undefined,
       });
 
       if (error) {
@@ -591,28 +592,26 @@ export default function ProductDetail() {
                     <Image source={{ uri: product.image_url }} style={styles.productImage} />
                   </View>
                 )}
-                
                 <Text style={styles.productName}>{product.name}</Text>
                 {product.description && (
                   <Text style={styles.productDescription}>{product.description}</Text>
                 )}
-                
                 {/* Mostrar categoria */}
                 {product.generic_products?.categories && (
                   <View style={styles.categoryInfo}>
-                    <Ionicons 
-                      name={product.generic_products.categories.icon as any || 'pricetag-outline'} 
-                      size={16} 
-                      color={product.generic_products.categories.color || '#4CAF50'} 
+                    <Ionicons
+                      name={product.generic_products.categories.icon as any || 'pricetag-outline'}
+                      size={16}
+                      color={product.generic_products.categories.color || '#4CAF50'}
                     />
                     <Text style={styles.categoryText}>
                       {product.generic_products.categories.name}
                     </Text>
                   </View>
                 )}
-                
+
                 {/* Botão para editar */}
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.editProductButton}
                   onPress={() => setEditingProduct(true)}
                 >
@@ -628,8 +627,6 @@ export default function ProductDetail() {
             <Text style={styles.sectionTitle}>Imagem do Produto</Text>
             <ProductImage
               imageUrl={product.image_url}
-              onImageChange={handleImageChange}
-              editable={true}
               style={styles.productImageSection}
             />
           </View>
@@ -715,7 +712,7 @@ export default function ProductDetail() {
                     })}
                   </Text>
                   <Text style={styles.latestPriceStore}>
-                    {priceHistory[0].store?.name || 'Loja desconhecida'}
+                    {priceHistory[0]?.store?.name || 'Loja desconhecida'}
                   </Text>
                 </View>
               )}

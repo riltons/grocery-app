@@ -283,6 +283,12 @@ export default function HomeTab() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
+            style={styles.comparisonButton}
+            onPress={() => router.push('/comparison')}
+          >
+            <Ionicons name="analytics-outline" size={20} color="#FF6B35" />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.invoiceButton}
             onPress={() => router.push('/invoice-demo')}
           >
@@ -293,7 +299,6 @@ export default function HomeTab() {
             onPress={() => setInvitationModalVisible(true)}
           >
             <Ionicons name="mail-outline" size={20} color="#4CAF50" />
-            {/* Badge será mostrado apenas quando houver convites reais */}
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.menuButton}
@@ -446,6 +451,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  comparisonButton: {
+    padding: 8,
+    marginRight: 8,
   },
   menuButton: {
     padding: 8,

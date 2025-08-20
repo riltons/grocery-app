@@ -117,8 +117,7 @@ export default function StoreSessionsScreen() {
       <View style={styles.sessionInfo}>
         <Text style={styles.sessionName}>{item.name}</Text>
         <Text style={styles.sessionDate}>
-          {new Date(item.created_at).toLocaleDateString('pt-BR')} às {' '}
-          {new Date(item.created_at).toLocaleTimeString('pt-BR', { 
+          {new Date(item.created_at).toLocaleDateString('pt-BR')} às {new Date(item.created_at).toLocaleTimeString('pt-BR', { 
             hour: '2-digit', 
             minute: '2-digit' 
           })}

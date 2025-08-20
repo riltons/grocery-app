@@ -94,7 +94,7 @@ export default function SessionDetailScreen() {
 
 📦 Produtos (${itemsWithPrice.length}):
 ${itemsWithPrice.map(item => 
-  `• ${item.specific_products.name}${item.specific_products.brand ? ` - ${item.specific_products.brand}` : ''}: R$ ${item.price?.toFixed(2)}`
+  `• ${item.specific_products.name}${item.specific_products.brand ? ` - ${item.specific_products.brand}` : ''}: R$ ${(item.price || 0).toFixed(2)}`
 ).join('\n')}
 
 💰 Total: R$ ${total.toFixed(2)}
@@ -120,11 +120,11 @@ Criado com o app de Lista de Compras`;
       />
       
       <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.specific_products.name}</Text>
-        {item.specific_products.brand && (
+        <Text style={styles.productName}>{item.specific_products?.name || 'Produto sem nome'}</Text>
+        {item.specific_products?.brand && (
           <Text style={styles.productBrand}>{item.specific_products.brand}</Text>
         )}
-        {item.specific_products.barcode && (
+        {item.specific_products?.barcode && (
           <Text style={styles.productBarcode}>Código: {item.specific_products.barcode}</Text>
         )}
         <Text style={styles.scanDate}>

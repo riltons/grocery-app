@@ -93,7 +93,7 @@ export default function ListCard({
           </View>
         ) : (
           <View style={styles.arrow}>
-            <Text style={styles.arrowText}>›</Text>
+            <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
           </View>
         )}
       </View>

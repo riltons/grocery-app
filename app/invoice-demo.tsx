@@ -81,23 +81,23 @@ export default function InvoiceDemo() {
               <View style={styles.invoiceCard}>
                 <Text style={styles.invoiceInfo}>
                   <Text style={styles.label}>Loja: </Text>
-                  {lastProcessedInvoice.storeName}
+                  <Text>{lastProcessedInvoice.storeName}</Text>
                 </Text>
                 <Text style={styles.invoiceInfo}>
                   <Text style={styles.label}>Número: </Text>
-                  {lastProcessedInvoice.number}
+                  <Text>{lastProcessedInvoice.number}</Text>
                 </Text>
                 <Text style={styles.invoiceInfo}>
                   <Text style={styles.label}>Data: </Text>
-                  {new Date(lastProcessedInvoice.date).toLocaleDateString('pt-BR')}
+                  <Text>{new Date(lastProcessedInvoice.date).toLocaleDateString('pt-BR')}</Text>
                 </Text>
                 <Text style={styles.invoiceInfo}>
                   <Text style={styles.label}>Total: </Text>
-                  R$ {lastProcessedInvoice.totalAmount.toFixed(2)}
+                  <Text>R$ {lastProcessedInvoice.totalAmount.toFixed(2)}</Text>
                 </Text>
                 <Text style={styles.invoiceInfo}>
                   <Text style={styles.label}>Produtos: </Text>
-                  {lastProcessedInvoice.products.length} itens
+                  <Text>{lastProcessedInvoice.products.length} itens</Text>
                 </Text>
               </View>
             </View>

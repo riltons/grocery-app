@@ -1174,7 +1174,7 @@ export default function ListDetail() {
           </View>
           {(item.category || getCategoryNameById(item.category_id)) && (
             <Text style={[styles.itemCategory, item.checked && styles.itemCategoryChecked]}>
-              • {(item.category || getCategoryNameById(item.category_id))}
+              <Text>• {String(item.category || getCategoryNameById(item.category_id) || '')}</Text>
             </Text>
           )}
           {item.checked && (
@@ -1317,7 +1317,7 @@ export default function ListDetail() {
         quantity={selectedItem?.quantity || 0}
         unit={selectedItem?.unit || ''}
         loading={addingItem}
-        storeName={selectedStore?.name}
+        storeName={selectedStore?.name || ''}
       />
 
       <PriceEditModal

@@ -396,7 +396,7 @@ export default function ShareListModal({
               <View style={styles.participantInfo}>
                 <Text style={styles.participantName}>
                   {participant.name || participant.email.split('@')[0]}
-                  {participant.isOwner && ' (Proprietário)'}
+                  {participant.isOwner && <Text> (Proprietário)</Text>}
                 </Text>
                 <Text style={styles.participantEmail}>{participant.email}</Text>
                 <Text style={styles.participantPermission}>

@@ -305,7 +305,6 @@ export default function NewProduct() {
             {barcodeInfo && (
               <View style={styles.barcodeInfoContainer}>
                 <Text style={styles.barcodeInfoTitle}>Informações encontradas:</Text>
-                {console.log('🔍 Estado do barcodeInfo na renderização:', barcodeInfo)}
                 
                 {barcodeInfo.image ? (
                   <View style={styles.productImagePreview}>
