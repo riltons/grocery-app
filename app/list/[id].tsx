@@ -352,11 +352,18 @@ export default function ListDetail() {
         return;
       }
       
-      // Atualizar localmente
+      // Atualizar localmente preservando todas as propriedades do item
       setItems(prevItems =>
         prevItems.map(item =>
           item.id === existingItem.id
-            ? { ...item, quantity: newQuantity }
+            ? { 
+                ...item, 
+                quantity: newQuantity,
+                // Preservar explicitamente as propriedades que determinam o tipo do produto
+                is_generic: item.is_generic,
+                product_id: item.product_id,
+                generic_product_id: item.generic_product_id
+              }
             : item
         )
       );
@@ -1015,10 +1022,17 @@ export default function ListDetail() {
         return;
       }
       
-      // Atualizar localmente
+      // Atualizar localmente preservando todas as propriedades do item
       setItems(prevItems =>
         prevItems.map(i =>
-          i.id === item.id ? { ...i, quantity: newQuantity } : i
+          i.id === item.id ? { 
+            ...i, 
+            quantity: newQuantity,
+            // Preservar explicitamente as propriedades que determinam o tipo do produto
+            is_generic: i.is_generic,
+            product_id: i.product_id,
+            generic_product_id: i.generic_product_id
+          } : i
         )
       );
     } catch (error) {
@@ -1041,10 +1055,17 @@ export default function ListDetail() {
         return;
       }
       
-      // Atualizar localmente
+      // Atualizar localmente preservando todas as propriedades do item
       setItems(prevItems =>
         prevItems.map(i =>
-          i.id === item.id ? { ...i, quantity: newQuantity } : i
+          i.id === item.id ? { 
+            ...i, 
+            quantity: newQuantity,
+            // Preservar explicitamente as propriedades que determinam o tipo do produto
+            is_generic: i.is_generic,
+            product_id: i.product_id,
+            generic_product_id: i.generic_product_id
+          } : i
         )
       );
     } catch (error) {
